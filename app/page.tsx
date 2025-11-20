@@ -8,6 +8,24 @@ import NotesList from "./components/NotesList";
 
 export default function Home() {
   const [session, setSession] = useState<any>(null);
+  const [notes, setNotes] = useState([]);
+
+  const fetchNotes = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const res = await fetch("/api/getNotes", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setNotes(data);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -40,9 +58,9 @@ export default function Home() {
           >
             Logout
           </button>
-          <Composer />
-          <NotesList />
-      </div>
+          <Composer onNoteSaved={fetchNotes} />
+          <NotesList notes={notes} />      
+          </div>
       
      }
     </main>

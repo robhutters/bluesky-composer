@@ -7,7 +7,8 @@ const MAX_CHARACTERS = 300;
 
 
 
-export default function Composer() {
+export default function Composer({ onNoteSaved }: { onNoteSaved: () => void }) { 
+  
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -31,12 +32,17 @@ export default function Composer() {
             body: JSON.stringify({ content: text }),
           });
           setLoading(false);
-
+        
+      if (res.ok) {
+        alert("Note saved successfully!");
+        setText("");
+        onNoteSaved(); // 🔥 trigger refresh
+      }
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || "Failed to save note");
       }
-      setText("");
+     
       // keep passphrase in memory; do not send to server
     } catch (err: any) {
       alert(`Error saving note: ${err.message ?? "Unknown error"}`);
@@ -79,7 +85,7 @@ export default function Composer() {
               : "bg-blue-600 hover:bg-blue-700"
           }`}
         >
-          {loading ? "Encrypting..." : "Save note"}
+          {loading ? "Saving..." : "Save note"}
         </button>
       </div>
 
