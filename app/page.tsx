@@ -1,68 +1,82 @@
 "use client";
-// pages/index.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
-import Auth from "./components/Auth";
 import Composer from "./components/Composer";
 import NotesList from "./components/NotesList";
+import Auth from "./components/Auth";
+import LogoutButton from "./components/LogoutButton";
 
-export default function Home() {
-  const [session, setSession] = useState<any>(null);
+export default function MainPage() {
+  const [user, setUser] = useState<any>(null);
   const [notes, setNotes] = useState([]);
 
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+     
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchNotes();
+    }
+  }, [user]);
+
   const fetchNotes = async () => {
+
+    if (!user) return;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
     const res = await fetch("/api/getNotes", {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
+     
     if (res.ok) {
+     
       const data = await res.json();
       setNotes(data);
+    
     }
   };
 
-  useEffect(() => {
-    fetchNotes();
-  }, []);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-
-
-   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
-  };
-
   return (
-    <main className="p-10">
-      {!session ? <Auth /> : 
-      <div>
-        <button
-            onClick={handleLogout}
-            className="mb-6 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-          >
-            Logout
-          </button>
-          <Composer onNoteSaved={fetchNotes} />
-          <NotesList notes={notes} />      
+    <div className="space-y-6 flex flex-col items-center justify-center min-h-screen py-2 px-4 bg-gray-100">
+
+
+
+      <main className="w-full max-w-[800px] flex-col flex justify-center">
+      <blockquote className="border-l-4 mt-8 border-blue-500 pl-4 italic text-gray-600 mb-6">
+        <p>
+          i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish --- Lyx Lyon (bsky user)
+        </p>
+      </blockquote>
+
+        { user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
+      {/* Composer is always visible */}
+      <Composer onNoteSaved={fetchNotes} user={user} />
+
+      {/* Notes only load if logged in */}
+      {user ? (
+        <NotesList notes={notes} />
+      ) : (
+          <div>
+            <div className="p-4 border mt-12 rounded bg-yellow-50">
+
+              <p className="text-sm">
+            You’re browsing anonymously. Sign in to save and view notes.
+          </p>
+         
           </div>
-      
-     }
-    </main>
+          <Auth />
+        </div>
+      )}
+      <footer className="mt-12 text-center text-gray-500 text-sm">
+        &copy; {new Date().getFullYear()} BlueSky Composer. Built with NextJS, React, TailwindCSS, <a href="https://supabase.com" className="underline">Supabase</a> and ❤️ by <a href="https://robhutters.com" className="underline">Rob Hutters</a>. Hosted on  and <a href="https://netlify.com" className="underline">Netlify</a>.
+      </footer>
+      </main>
+    </div>
   );
 }

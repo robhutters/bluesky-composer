@@ -7,7 +7,7 @@ const MAX_CHARACTERS = 300;
 
 
 
-export default function Composer({ onNoteSaved }: { onNoteSaved: () => void }) { 
+export default function Composer({ onNoteSaved, user }: { onNoteSaved: () => void, user: any }) { 
   
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,6 +18,7 @@ export default function Composer({ onNoteSaved }: { onNoteSaved: () => void }) {
   };
 
   const saveNote = async () => {
+    if (!user) return;
     if (!text) return;
     setLoading(true);
     try {
@@ -78,14 +79,14 @@ export default function Composer({ onNoteSaved }: { onNoteSaved: () => void }) {
 
         <button
           onClick={saveNote}
-          disabled={text.length === 0 || loading}
+          disabled={text.length === 0 || loading || !user }
           className={`px-4 py-2 rounded-md text-white transition ${
             text.length === 0 || loading
               ? "bg-blue-400 cursor-not-allowed opacity-50"
               : "bg-blue-600 hover:bg-blue-700"
           }`}
         >
-          {loading ? "Saving..." : "Save note"}
+          {user ? (loading ? "Saving..." : "Save note") : "Sign in to save"}
         </button>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 export default function NotesList({ notes }: { notes: any[] }) {  
-
+console.log("Rendering NotesList with notes:", notes);
 return (
     <div className="mt-6">
       <h3 className="text-lg font-semibold mb-3">Your Notes</h3>
