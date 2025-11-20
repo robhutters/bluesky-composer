@@ -74,7 +74,7 @@ export default function MainPage() {
         </div>
       )}
       <footer className="mt-12 text-center text-gray-500 text-sm">
-        &copy; {new Date().getFullYear()} BlueSky Composer. Built with NextJS, React, TailwindCSS, <a href="https://supabase.com" className="underline">Supabase</a> and ❤️ by <a href="https://robhutters.com" className="underline">Rob Hutters</a>. Hosted on  and <a href="https://netlify.com" className="underline">Netlify</a>.
+        &copy; {new Date().getFullYear()} BlueSky Composer. Built with NextJS, React, TailwindCSS, <a href="https://supabase.com" className="underline">Supabase</a> and ❤️ by <a href="https://robhutters.com" className="underline">Rob Hutters</a>. Hosted on <a href="https://vercel.com" className="underline">Vercel</a>.
       </footer>
       </main>
     </div>
