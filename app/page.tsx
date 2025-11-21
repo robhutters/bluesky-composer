@@ -5,6 +5,7 @@ import Composer from "./components/Composer";
 import NotesList from "./components/NotesList";
 import Auth from "./components/Auth";
 import LogoutButton from "./components/LogoutButton";
+import Image from "next/image";
 
 export default function MainPage() {
   const [user, setUser] = useState<any>(null);
@@ -48,16 +49,13 @@ export default function MainPage() {
 
 
       <main className="w-full max-w-[800px] flex-col flex justify-center">
-      <blockquote className="border-l-4 mt-8 border-blue-500 pl-4 italic text-gray-600 mb-6">
-        <p>
-          i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish --- Lyx Lyon (bsky user)
-        </p>
-      </blockquote>
+        <Image src="/assets/quote.jpg" alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'" width={600} height={200} className="mx-auto mb-4 mt-8" />
+     
 
         { user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
       {/* Composer is always visible */}
       <Composer onNoteSaved={fetchNotes} user={user} />
-
+      <p className="pt-12"><strong>Scheduled feature:</strong> 'auto-cuts to the next line.' Save your note when it reaches the limit as a work-around.</p>
       {/* Notes only load if logged in */}
       {user ? (
         <NotesList notes={notes} />
