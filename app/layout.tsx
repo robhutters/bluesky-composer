@@ -21,8 +21,8 @@ export default function RootLayout({
       >
          <AuthProvider>
           {children}
-          <Script async src="https://scripts.simpleanalyticscdn.com/latest.js" />
-
+          <Script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js" />
+          
         </AuthProvider>
       </body>
     </html>
