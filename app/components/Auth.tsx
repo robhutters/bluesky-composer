@@ -17,7 +17,6 @@ export default function Auth() {
     });
     setLoading(false);
     if (error) alert(error.message);
-    else alert("Logged in!");
   };
 
   const handleSignup = async () => {

@@ -6,19 +6,14 @@ import NotesList from "./components/NotesList";
 import Auth from "./components/Auth";
 import LogoutButton from "./components/LogoutButton";
 import Image from "next/image";
-import Head from "next/head";
+import { useAuth } from "./providers/AuthProvider";
 
 export default function MainPage() {
-  const [user, setUser] = useState<any>(null);
+
+  const { user } = useAuth();
   const [notes, setNotes] = useState([]);
 
-  useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-     
-    })();
-  }, []);
+ 
 
   useEffect(() => {
     if (user) {
@@ -46,12 +41,7 @@ export default function MainPage() {
 
   return (
     <>
-    <Head>
-      <title>BlueSky Composer - Notes app for BlueSky users</title>
-      <meta name="description" content="A simple notes app for BlueSky users, built with NextJS and Supabase." />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="icon" href="/favicon.ico" />
-    </Head>
+  
       <div className="space-y-6 flex flex-col items-center justify-center min-h-screen py-2 px-4 bg-gray-100">
 
 
