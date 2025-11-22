@@ -53,7 +53,7 @@ export default function MainPage() {
         { user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
       {/* Composer is always visible */}
       <Composer onNoteSaved={fetchNotes} user={user} />
-      <p className="pt-12"><strong>Scheduled feature:</strong> 'auto-cuts to the next line.' Save your note when it reaches the limit as a work-around.</p>
+    
       {/* Notes only load if logged in */}
       {user ? (
         <NotesList notes={notes} />
