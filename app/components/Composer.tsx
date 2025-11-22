@@ -21,7 +21,14 @@ export default function Composer({ onNoteSaved, user }: { onNoteSaved: () => voi
     const value = e.target.value;
    
       if (value.length > MAX_CHARACTERS && !hasAutoSaved) {
-      const splitIndex = value.lastIndexOf(" ", MAX_CHARACTERS);
+       if (!user) {
+      // Anonymous user: keep full text, show flash message
+          setFlashMessage("Sign in to save notes beyond 300 characters");
+          setTimeout(() => setFlashMessage(null), 3000);
+          return; // do not erase input
+        }
+      
+        const splitIndex = value.lastIndexOf(" ", MAX_CHARACTERS);
       const firstPart = value.slice(0, splitIndex);
       const remainder = value.slice(splitIndex + 1);
       
