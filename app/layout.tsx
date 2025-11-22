@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "./providers/AuthProvider";
-
+import Script from "next/script";
 
 
 export const metadata: Metadata = {
@@ -21,6 +21,8 @@ export default function RootLayout({
       >
          <AuthProvider>
           {children}
+          <Script async src="https://scripts.simpleanalyticscdn.com/latest.js" />
+
         </AuthProvider>
       </body>
     </html>
