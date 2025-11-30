@@ -39,6 +39,27 @@ export default function MainPage() {
     }
   };
 
+  const deleteNote = async (id: string | number) => {
+    if (!user) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const res = await fetch("/api/deleteNote", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ id }),
+    });
+
+    if (res.ok) {
+      setNotes((prev: any) => prev.filter((note: any) => note.id !== id));
+    } else {
+      console.error("Failed to delete note");
+    }
+  };
+
   return (
     <>
   
@@ -48,7 +69,7 @@ export default function MainPage() {
 
       <main className="w-full max-w-[800px] flex-col flex justify-center">
         <Image src="/assets/quote.jpg" alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'" width={600} height={200} className="mx-auto mb-4 mt-8" />
-     
+        <Image src="/assets/notes_example.png" alt="Example of notes saved under the composer" width={600} height={350} className="mx-auto mb-6 rounded-lg border border-gray-200 shadow-sm" />
 
         { user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
       {/* Composer is always visible */}
@@ -56,7 +77,7 @@ export default function MainPage() {
     
       {/* Notes only load if logged in */}
       {user ? (
-        <NotesList notes={notes} />
+        <NotesList notes={notes} onDelete={deleteNote} />
       ) : (
           <div>
             <div className="p-4 border mt-12 rounded bg-yellow-50">
