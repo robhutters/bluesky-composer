@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This app is a BlueSky composer with autosplit at 300 chars, encrypted note storage in Supabase, and per-user access control.
 
 ## Getting Started
-
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+Visit http://localhost:3000.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Security & RLS
+- Notes are encrypted server-side; the encryption key lives only on the server.
+- Client calls API routes with the user’s Supabase session token; routes use the service-role key and enforce user ownership.
+- Enable RLS on `public.notes` and add owner-only policies:
+```sql
+alter table public.notes enable row level security;
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+create policy "notes_select_owner" on public.notes
+  for select using (auth.uid() = user_id);
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+create policy "notes_insert_owner" on public.notes
+  for insert with check (auth.uid() = user_id);
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+create policy "notes_delete_owner" on public.notes
+  for delete using (auth.uid() = user_id);
+```
+Keep the service-role key server-side only. If you use RPCs, continue passing the auth token so `auth.uid()` resolves.

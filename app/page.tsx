@@ -70,6 +70,26 @@ export default function MainPage() {
       <main className="w-full max-w-[800px] flex-col flex justify-center">
         <Image src="/assets/quote.jpg" alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'" width={600} height={200} className="mx-auto mb-4 mt-8" />
         <Image src="/assets/notes_example.png" alt="Example of notes saved under the composer" width={600} height={350} className="mx-auto mb-6 rounded-lg border border-gray-200 shadow-sm" />
+        <div className="mt-6 p-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+          <h2 className="text-lg font-semibold mb-2">Secure storage</h2>
+          <p className="text-sm text-gray-700 mb-3">
+            Notes are encrypted before they are stored. Even in the database, they look like unreadable ciphertext. Only your authenticated session can read or delete your notes; the decryption key stays on the server.
+          </p>
+          <Image
+            src="/assets/notes_encrypted.png"
+            alt="Example of encrypted note ciphertext"
+            width={600}
+            height={240}
+            className="mx-auto rounded border border-gray-200"
+          />
+          <ul className="mt-3 text-sm text-gray-700 list-disc list-inside space-y-1">
+            <li>Traffic uses HTTPS; your session token authorizes access.</li>
+            <li>Ciphertext is stored in the database; the key never leaves the server.</li>
+            <li>Only the note owner can read or delete their notes.</li>
+            <li className="text-red-700 font-semibold">Risk profile: if the server or encryption key is compromised, an attacker or rogue operator could access notes. </li>
+            <li>For normal use (drafts intended for posting), this risk is considered very low.</li>
+          </ul>
+        </div>
 
         { user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
       {/* Composer is always visible */}
