@@ -73,7 +73,7 @@ export default function MainPage() {
         <div className="mt-6 p-4 rounded-lg border border-gray-200 bg-white shadow-sm">
           <h2 className="text-lg font-semibold mb-2">Secure storage</h2>
           <p className="text-sm text-gray-700 mb-3">
-            Notes are encrypted before they are stored. Even in the database, they look like unreadable ciphertext. Only your authenticated session can read or delete your notes; the decryption key stays on the server.
+            Notes are encrypted before they are stored. The notes look like unreadable ciphertext in the database itself. Only your authenticated session can read or delete your notes; the decryption key stays on the server.
           </p>
           <Image
             src="/assets/notes_encrypted.png"
