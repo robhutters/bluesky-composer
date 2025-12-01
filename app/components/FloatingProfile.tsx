@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 
 const projects = [
   { name: "Choose your next 8bitdo controller", url: "https://controllerpicker.com" },
-  { name: "Respond instantly to targeted keywords", url: "https://socialcmd.vercel.app" },
+  { name: "Respond instantly to targeted keywords", url: "https://socialcmd.app" },
   { name: "Long-form BlueSky posting made enjoyable", url: "https://blueskycomposer.com" },
   { name: "Swipe. Choose. Cook. (Dutch)", url: "https://deluiechef.nl" },
   { name: "Buy Limited Edition Merchandise (Dutch)", url: "https://shop.deluiechef.nl" },
