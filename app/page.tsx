@@ -4,6 +4,7 @@ import { supabase } from "./lib/supabaseClient";
 import Composer from "./components/Composer";
 import NotesList from "./components/NotesList";
 import Auth from "./components/Auth";
+import { FloatingProfile } from "./components/FloatingProfile";
 import LogoutButton from "./components/LogoutButton";
 import Image from "next/image";
 import { useAuth } from "./providers/AuthProvider";
@@ -63,7 +64,7 @@ export default function MainPage() {
   return (
     <>
   
-      <div className="space-y-6 flex flex-col items-center justify-center min-h-screen py-2 px-4 bg-gray-100">
+      <div className="space-y-6 flex flex-col items-center justify-center min-h-screen py-2 px-4 bg-gray-100 relative">
 
 
 
@@ -114,6 +115,7 @@ export default function MainPage() {
         &copy; {new Date().getFullYear()} BlueSky Composer. Built with NextJS, React, TailwindCSS, <a href="https://supabase.com" className="underline">Supabase</a> and ❤️ by <a href="https://robhutters.com" className="underline">Rob Hutters</a>. Hosted on <a href="https://vercel.com" className="underline">Vercel</a>.
       </footer>
       </main>
+      <FloatingProfile />
     </div>
     </>
     
