@@ -1,7 +1,9 @@
 "use client";
 import React, { useEffect, useState } from "react";
 
-const projects = [
+type Project = { name: string; url: string };
+
+const fallbackProjects: Project[] = [
   { name: "Choose your next 8bitdo controller", url: "https://controllerpicker.com" },
   { name: "Respond instantly to targeted keywords", url: "https://socialcmd.app" },
   { name: "Long-form BlueSky posting made enjoyable", url: "https://blueskycomposer.com" },
@@ -12,8 +14,23 @@ const projects = [
 export function FloatingProfile() {
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [projects, setProjects] = useState<Project[]>(fallbackProjects);
 
   useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const res = await fetch("https://socialcmd.app/api/projects");
+        if (!res.ok) throw new Error("Failed to load projects");
+        const data = await res.json();
+        if (Array.isArray(data.projects) && data.projects.length) {
+          setProjects(data.projects);
+        }
+      } catch {
+        setProjects(fallbackProjects);
+      }
+    };
+    loadProjects();
+
     const mq = window.matchMedia("(max-width: 767px)");
     const update = () => setIsMobile(mq.matches);
     update();
