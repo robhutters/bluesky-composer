@@ -19,7 +19,7 @@ export function FloatingProfile() {
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        const res = await fetch("https://socialcmd.app/api/projects");
+        const res = await fetch("https://www.socialcmd.app/api/projects");
         if (!res.ok) throw new Error("Failed to load projects");
         const data = await res.json();
         if (Array.isArray(data.projects) && data.projects.length) {
