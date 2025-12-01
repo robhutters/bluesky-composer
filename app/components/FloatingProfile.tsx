@@ -15,11 +15,13 @@ export function FloatingProfile() {
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [projects, setProjects] = useState<Project[]>(fallbackProjects);
+  const [showPulse, setShowPulse] = useState(false);
+  const [showTip, setShowTip] = useState(false);
 
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        const res = await fetch("https://www.socialcmd.app/api/projects");
+        const res = await fetch("https://www.socialcmd.app/api/projects", { cache: "no-store" });
         if (!res.ok) throw new Error("Failed to load projects");
         const data = await res.json();
         if (Array.isArray(data.projects) && data.projects.length) {
@@ -30,6 +32,15 @@ export function FloatingProfile() {
       }
     };
     loadProjects();
+
+    const seen = typeof window !== "undefined" && window.sessionStorage.getItem("fp_seen");
+    if (!seen) {
+      setShowPulse(true);
+      setShowTip(true);
+      window.sessionStorage.setItem("fp_seen", "1");
+      setTimeout(() => setShowPulse(false), 4000);
+      setTimeout(() => setShowTip(false), 5000);
+    }
 
     const mq = window.matchMedia("(max-width: 767px)");
     const update = () => setIsMobile(mq.matches);
@@ -50,17 +61,32 @@ export function FloatingProfile() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Open project menu"
-        className={`fixed bottom-4 right-4 z-50 overflow-hidden rounded-full border-2 border-white shadow-lg transition hover:scale-105 ${btnSize}`}
-      >
-        <img
-          src="https://robhutters.com/assets/images/headshot/rob_profile_picture_headshot_small_low_kb.jpeg"
-          alt="Rob Hutters headshot"
-          className="h-full w-full object-cover"
-        />
-      </button>
+      <div className={`fixed bottom-4 right-4 z-50 ${btnSize}`}>
+        <div className="relative h-full w-full">
+          {showPulse && (
+            <span className="absolute inset-0 rounded-full border-2 border-purple-400/70 animate-ping" aria-hidden="true"></span>
+          )}
+          <button
+            onClick={() => setOpen((v) => !v)}
+            aria-label="Open project menu"
+            className={`relative h-full w-full overflow-hidden rounded-full border-2 border-white shadow-lg transition hover:scale-105 ${btnSize}`}
+            onMouseEnter={() => setShowTip(true)}
+            onMouseLeave={() => setShowTip(false)}
+          >
+            <img
+              src="https://robhutters.com/assets/images/headshot/rob_profile_picture_headshot_small_low_kb.jpeg"
+              alt="Rob Hutters headshot"
+              className="h-full w-full object-cover"
+            />
+          </button>
+          {showTip && (
+            <div className="absolute -left-48 bottom-full mb-2 w-48 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-zinc-800 shadow-lg border border-zinc-200">
+              Click to explore more projects
+              <span className="absolute right-6 bottom-[-6px] h-3 w-3 rotate-45 bg-white border-r border-b border-zinc-200"></span>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className={`z-50 ${panelClasses}`}>
         <div className="p-3 text-sm font-semibold text-zinc-800">My projects</div>
