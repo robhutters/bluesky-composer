@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 const MAX_CHARACTERS = 300;
 const LOCAL_DRAFT_KEY = "bsky-composer-draft";
+const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
+const ACTIVITY_PING_INTERVAL_MS = 30000;
 
 export default function Composer({
   onNoteSaved,
@@ -18,6 +20,8 @@ export default function Composer({
   const [loading, setLoading] = useState(false);
   const [hasAutoSaved, setHasAutoSaved] = useState(false);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const [visitorId, setVisitorId] = useState<string | null>(null);
+  const lastPingRef = useRef<number>(0);
 
   // Load any locally saved draft on mount
   useEffect(() => {
@@ -25,6 +29,12 @@ export default function Composer({
     try {
       const stored = window.localStorage.getItem(LOCAL_DRAFT_KEY);
       if (stored) setText(stored);
+      let vid = window.localStorage.getItem(LOCAL_VISITOR_KEY);
+      if (!vid) {
+        vid = crypto.randomUUID();
+        window.localStorage.setItem(LOCAL_VISITOR_KEY, vid);
+      }
+      setVisitorId(vid);
     } catch {
       /* ignore */
     }
@@ -62,6 +72,18 @@ export default function Composer({
       }
     } else {
       setText(value);
+    }
+
+    const now = Date.now();
+    if (visitorId && now - lastPingRef.current > ACTIVITY_PING_INTERVAL_MS) {
+      lastPingRef.current = now;
+      void fetch("/api/track-activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: visitorId }),
+      }).catch(() => {
+        /* ignore */ 
+      });
     }
   };
 
