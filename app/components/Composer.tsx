@@ -22,6 +22,7 @@ export default function Composer({
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const lastPingRef = useRef<number>(0);
+  const lastSavePingRef = useRef<number>(0);
 
   // Load any locally saved draft on mount
   useEffect(() => {
@@ -91,6 +92,19 @@ export default function Composer({
     if (!partialText) return;
     // Always keep a local copy
     onLocalSave(partialText);
+    if (visitorId) {
+      const now = Date.now();
+      if (now - lastSavePingRef.current > 5000) {
+        lastSavePingRef.current = now;
+        void fetch("/api/track-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: visitorId, kind: user ? "cloud" : "local" }),
+        }).catch(() => {
+          /* ignore */
+        });
+      }
+    }
     if (!user) return;
     setLoading(true);
     try {
@@ -129,6 +143,19 @@ export default function Composer({
     try {
       // Always save locally
       onLocalSave(text);
+      if (visitorId) {
+        const now = Date.now();
+        if (now - lastSavePingRef.current > 5000) {
+          lastSavePingRef.current = now;
+          void fetch("/api/track-save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId: visitorId, kind: user ? "cloud" : "local" }),
+          }).catch(() => {
+            /* ignore */
+          });
+        }
+      }
 
       if (user) {
         const { data: { session } } = await supabase.auth.getSession();
