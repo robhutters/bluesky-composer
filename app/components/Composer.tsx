@@ -1,77 +1,98 @@
 "use client";
-// components/Composer.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-
-
 const MAX_CHARACTERS = 300;
+const LOCAL_DRAFT_KEY = "bsky-composer-draft";
 
-
-
-export default function Composer({ onNoteSaved, user }: { onNoteSaved: () => void, user: any }) { 
- 
+export default function Composer({
+  onNoteSaved,
+  onLocalSave,
+  user,
+}: {
+  onNoteSaved: () => void;
+  onLocalSave: (content: string) => void;
+  user: any;
+}) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [hasAutoSaved, setHasAutoSaved] = useState(false);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
 
+  // Load any locally saved draft on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem(LOCAL_DRAFT_KEY);
+      if (stored) setText(stored);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Persist draft locally on every change (works for signed-in and anonymous)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(LOCAL_DRAFT_KEY, text);
+    } catch {
+      /* ignore */
+    }
+  }, [text]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
-   
-      if (value.length > MAX_CHARACTERS && !hasAutoSaved) {
-       if (!user) {
-      // Anonymous user: keep full text, show flash message
-          setFlashMessage("Sign in to save notes beyond 300 characters");
-          setTimeout(() => setFlashMessage(null), 3000);
-          return; // do not erase input
-        }
-      
-        const splitIndex = value.lastIndexOf(" ", MAX_CHARACTERS);
-      const firstPart = value.slice(0, splitIndex);
-      const remainder = value.slice(splitIndex + 1);
-      
-      setHasAutoSaved(true);
-      setText(firstPart);
 
-      autoSave(firstPart).then(() => {
-        onNoteSaved();
-        setText(remainder);
-        setHasAutoSaved(false);
-      });
+    if (value.length > MAX_CHARACTERS) {
+      if (!hasAutoSaved) {
+        const splitIndex = value.lastIndexOf(" ", MAX_CHARACTERS);
+        const firstPart = value.slice(0, splitIndex);
+        const remainder = value.slice(splitIndex + 1);
+
+        setHasAutoSaved(true);
+        setText(firstPart);
+
+        autoSave(firstPart).then(() => {
+          onNoteSaved();
+          setText(remainder);
+          setHasAutoSaved(false);
+        });
+      } else {
+        setText(value);
+      }
     } else {
       setText(value);
     }
   };
 
   const autoSave = async (partialText: string) => {
-    if (!user || !partialText) return;
+    if (!partialText) return;
+    // Always keep a local copy
+    onLocalSave(partialText);
+    if (!user) return;
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
 
       const res = await fetch("/api/saveNote", {
-            method: "POST",
-            headers: { "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-             },
-            body: JSON.stringify({ content: partialText }),
-          });
-          setLoading(false);
-        
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ content: partialText }),
+      });
+      setLoading(false);
+
       if (res.ok) {
         setFlashMessage("Note auto-saved ✔️");
-        setTimeout(() => setFlashMessage(null), 5000); // disappear after 2s
-       
+        setTimeout(() => setFlashMessage(null), 5000);
       }
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || "Failed to auto-save note");
       }
-     
-      // keep passphrase in memory; do not send to server
     } catch (err: any) {
       setFlashMessage(`Error auto-saving: ${err.message ?? "Unknown error"}`);
       setTimeout(() => setFlashMessage(null), 5000);
@@ -81,33 +102,40 @@ export default function Composer({ onNoteSaved, user }: { onNoteSaved: () => voi
   };
 
   const saveNote = async () => {
-    if (!user) return;
     if (!text) return;
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not logged in");
+      // Always save locally
+      onLocalSave(text);
 
-      const res = await fetch("/api/saveNote", {
-            method: "POST",
-            headers: { "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-             },
-            body: JSON.stringify({ content: text }),
-          });
-          setLoading(false);
-        
-      if (res.ok) {
-        alert("Note saved successfully!");
-        setText("");
-        onNoteSaved(); // 🔥 trigger refresh
+      if (user) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Not logged in");
+
+        const res = await fetch("/api/saveNote", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ content: text }),
+        });
+        setLoading(false);
+
+        if (res.ok) {
+          setFlashMessage("Note saved ✔️");
+          setTimeout(() => setFlashMessage(null), 3000);
+          onNoteSaved(); // refresh remote list
+        }
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error || "Failed to save note");
+        }
+      } else {
+        setFlashMessage("Note saved locally ✔️");
+        setTimeout(() => setFlashMessage(null), 3000);
       }
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to save note");
-      }
-     
-      // keep passphrase in memory; do not send to server
+      setText("");
     } catch (err: any) {
       alert(`Error saving note: ${err.message ?? "Unknown error"}`);
     } finally {
@@ -130,6 +158,9 @@ export default function Composer({ onNoteSaved, user }: { onNoteSaved: () => voi
       <label className="block text-sm font-medium text-gray-700 mb-1">
         Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
       </label>
+      <p className="text-[12px] text-gray-600 mb-2">
+        Saving while signed in also stores an encrypted copy in the cloud. 
+      </p>
       <textarea
         value={text}
         onChange={handleChange}
@@ -148,14 +179,14 @@ export default function Composer({ onNoteSaved, user }: { onNoteSaved: () => voi
 
         <button
           onClick={saveNote}
-          disabled={text.length === 0 || loading || !user }
+          disabled={text.length === 0 || loading}
           className={`px-4 py-2 rounded-md text-white transition ${
             text.length === 0 || loading
               ? "bg-blue-400 cursor-not-allowed opacity-50"
               : "bg-blue-600 hover:bg-blue-700"
           }`}
         >
-          {user ? (loading ? "Saving..." : "Save note") : "Sign in to save"}
+          {loading ? "Saving..." : "Save note"}
         </button>
       </div>
 

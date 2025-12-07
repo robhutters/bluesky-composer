@@ -9,21 +9,57 @@ import LogoutButton from "./components/LogoutButton";
 import Image from "next/image";
 import { useAuth } from "./providers/AuthProvider";
 
+const LOCAL_NOTES_KEY = "bsky-composer-notes";
+
 export default function MainPage() {
 
   const { user } = useAuth();
-  const [notes, setNotes] = useState([]);
+  const [notes, setNotes] = useState<any[]>([]);
 
  
 
   useEffect(() => {
     if (user) {
       fetchNotes();
+    } else {
+      loadLocalNotes();
     }
   }, [user]);
 
-  const fetchNotes = async () => {
+  const loadLocalNotes = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(LOCAL_NOTES_KEY);
+      if (!raw) {
+        setNotes([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setNotes(parsed);
+      }
+    } catch {
+      setNotes([]);
+    }
+  };
 
+  const addLocalNote = (content: string) => {
+    if (!content) return;
+    const newNote = {
+      id: Date.now(),
+      plaintext: content,
+      created_at: new Date().toISOString(),
+    };
+    setNotes((prev) => {
+      const next = [newNote, ...prev];
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const fetchNotes = async () => {
     if (!user) return;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -31,17 +67,24 @@ export default function MainPage() {
     const res = await fetch("/api/getNotes", {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
-     
+
     if (res.ok) {
-     
       const data = await res.json();
       setNotes(data);
-    
     }
   };
 
   const deleteNote = async (id: string | number) => {
-    if (!user) return;
+    if (!user) {
+      setNotes((prev: any[]) => {
+        const next = prev.filter((note) => note.id !== id);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+        }
+        return next;
+      });
+      return;
+    }
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
@@ -69,44 +112,33 @@ export default function MainPage() {
 
 
       <main className="w-full max-w-[800px] flex-col flex justify-center">
-        <Image src="/assets/quote.jpg" alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'" width={600} height={200} className="mx-auto mb-4 mt-8" />
-        <Image src="/assets/notes_example.png" alt="Example of notes saved under the composer" width={600} height={350} className="mx-auto mb-6 rounded-lg border border-gray-200 shadow-sm" />
-        <div className="mt-6 p-4 rounded-lg border border-gray-200 bg-white shadow-sm">
-          <h2 className="text-lg font-semibold mb-2">Secure storage</h2>
-          <p className="text-sm text-gray-700 mb-3">
-            Notes are encrypted before they are stored. The notes look like unreadable ciphertext in the database itself. Only your authenticated session can read or delete your notes; the decryption key stays on the server. This is what a note looks like:
-          </p>
-          <Image
-            src="/assets/notes_encrypted.png"
-            alt="Example of encrypted note ciphertext"
-            width={600}
-            height={240}
-            className="mx-auto rounded border border-gray-200"
-          />
-          <ul className="mt-3 text-sm text-gray-700 list-disc list-inside space-y-1">
-            <li>Traffic uses HTTPS; your session token authorizes access.</li>
-            <li>Ciphertext is stored in the database; the key never leaves the server.</li>
-            <li>Only the note owner can read or delete their notes.</li>
-            <li className="text-red-700 font-semibold">Risk profile: if the server or encryption key is compromised, an attacker or rogue operator could access notes. </li>
-            <li>For normal use (drafts intended for posting), this risk is considered very low.</li>
-          </ul>
-        </div>
+        <Image
+          src="/assets/quote.jpg"
+          alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'"
+          width={600}
+          height={200}
+          className="mx-auto mb-4 mt-8"
+        />
+        <Image
+          src="/assets/bluesky-demo.gif"
+          alt="BlueSky Composer demo"
+          width={600}
+          height={400}
+          className="mx-auto mb-8 rounded-lg border border-gray-200 shadow-sm"
+        />
 
-        { user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
-      {/* Composer is always visible */}
-      <Composer onNoteSaved={fetchNotes} user={user} />
+        {user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
+      {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
+      <Composer onNoteSaved={fetchNotes} onLocalSave={addLocalNote} user={user} />
     
-      {/* Notes only load if logged in */}
-      {user ? (
-        <NotesList notes={notes} onDelete={deleteNote} />
-      ) : (
-          <div>
-            <div className="p-4 border mt-12 rounded bg-yellow-50">
+      <NotesList notes={notes} onDelete={deleteNote} />
 
-              <p className="text-sm">
-            You’re browsing anonymously. Sign in to save and view notes.
-          </p>
-         
+      {!user && (
+        <div>
+          <div className="p-4 border mt-12 rounded bg-yellow-50">
+            <p className="text-sm">
+              You’re browsing anonymously. Your draft and saved notes stay on this device. Sign in to back up notes to the cloud.
+            </p>
           </div>
           <Auth />
         </div>
