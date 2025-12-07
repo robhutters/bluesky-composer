@@ -12,7 +12,6 @@ import { useAuth } from "./providers/AuthProvider";
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 
 export default function MainPage() {
-
   const { user } = useAuth();
   const [notes, setNotes] = useState<any[]>([]);
 
@@ -43,12 +42,13 @@ export default function MainPage() {
     }
   };
 
-  const addLocalNote = (content: string) => {
+  const addLocalNote = (content: string, imageData?: string | null) => {
     if (!content) return;
     const newNote = {
       id: Date.now(),
       plaintext: content,
       created_at: new Date().toISOString(),
+      imageData: imageData || null,
     };
     setNotes((prev) => {
       const next = [newNote, ...prev];
@@ -104,6 +104,21 @@ export default function MainPage() {
     }
   };
 
+  const reorderNotes = (fromIndex: number, toIndex: number) => {
+    setNotes((prev: any[]) => {
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      if (!user && typeof window !== "undefined") {
+        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
   return (
     <>
   
@@ -131,7 +146,7 @@ export default function MainPage() {
       {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
       <Composer onNoteSaved={fetchNotes} onLocalSave={addLocalNote} user={user} />
     
-      <NotesList notes={notes} onDelete={deleteNote} />
+      <NotesList notes={notes} onDelete={deleteNote} onReorder={reorderNotes} />
 
       {!user && (
         <div>

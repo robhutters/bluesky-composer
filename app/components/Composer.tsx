@@ -13,7 +13,7 @@ export default function Composer({
   user,
 }: {
   onNoteSaved: () => void;
-  onLocalSave: (content: string) => void;
+  onLocalSave: (content: string, imageData?: string | null) => void;
   user: any;
 }) {
   const [text, setText] = useState("");
@@ -23,6 +23,9 @@ export default function Composer({
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const lastPingRef = useRef<number>(0);
   const lastSavePingRef = useRef<number>(0);
+  const [imageData, setImageData] = useState<string | null>(null);
+  const [imageName, setImageName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load any locally saved draft on mount
   useEffect(() => {
@@ -91,7 +94,7 @@ export default function Composer({
   const autoSave = async (partialText: string) => {
     if (!partialText) return;
     // Always keep a local copy
-    onLocalSave(partialText);
+    onLocalSave(partialText, !user ? imageData : null);
     if (visitorId) {
       const now = Date.now();
       if (now - lastSavePingRef.current > 5000) {
@@ -142,7 +145,7 @@ export default function Composer({
     setLoading(true);
     try {
       // Always save locally
-      onLocalSave(text);
+      onLocalSave(text, !user ? imageData : null);
       if (visitorId) {
         const now = Date.now();
         if (now - lastSavePingRef.current > 5000) {
@@ -185,6 +188,7 @@ export default function Composer({
         setTimeout(() => setFlashMessage(null), 3000);
       }
       setText("");
+      setImageData(null);
     } catch (err: any) {
       alert(`Error saving note: ${err.message ?? "Unknown error"}`);
     } finally {
@@ -216,6 +220,62 @@ export default function Composer({
         placeholder="What's on your mind?"
         className="w-full min-h-[120px] p-3 text-base border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
+      <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
+        <label className="block text-sm font-semibold text-gray-800">
+          Optional image
+        </label>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition filter grayscale hover:grayscale-0 hover:bg-gray-100 hover:shadow-md"
+          >
+            {imageName ? "Change image" : "Choose image"}
+          </button>
+          <span className="text-xs text-gray-600">
+            {imageName ? imageName : "No image selected"}
+          </span>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) {
+              setImageData(null);
+              setImageName(null);
+              return;
+            }
+            setImageName(file.name);
+            const reader = new FileReader();
+            reader.onload = () => {
+              setImageData(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+          }}
+        />
+        {imageData && (
+          <div className="mt-2">
+            <img
+              src={imageData}
+              alt="Selected"
+              className="max-h-32 rounded border border-gray-200"
+            />
+            <button
+              type="button"
+              onClick={() => setImageData(null)}
+              className="ml-2 text-xs font-semibold text-red-600 underline"
+            >
+              Remove image
+            </button>
+          </div>
+        )}
+        <p className="text-[11px] text-gray-500">
+          Images are never uploaded; they remain in your local notes only.
+        </p>
+      </div>
 
       <div className="flex justify-between items-center mt-3">
         <span
