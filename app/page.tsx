@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
+import { contentKey, mergeLocalAndCloud, formatNotesToMarkdown, canExportNotes } from "./lib/noteUtils";
 import Composer from "./components/Composer";
 import NotesList from "./components/NotesList";
 import Auth from "./components/Auth";
@@ -352,34 +353,6 @@ export default function MainPage() {
     }).catch(() => {});
   };
 
-  const hashContent = (content: string) => {
-    let hash = 0;
-    for (let i = 0; i < content.length; i++) {
-      hash = (hash << 5) - hash + content.charCodeAt(i);
-      hash |= 0;
-    }
-    return hash.toString();
-  };
-
-  const contentKey = (plaintext: string) => {
-    const text = (plaintext || "").trim();
-    return `${text.length}:${hashContent(text)}`;
-  };
-
-  const mergeLocalAndCloud = (localNotes: any[], cloudNotes: any[]) => {
-    const mergedMap = new Map<string, any>();
-    for (const note of cloudNotes) {
-      mergedMap.set(contentKey(note.plaintext), note);
-    }
-    for (const note of localNotes) {
-      const key = contentKey(note.plaintext);
-      if (!mergedMap.has(key)) {
-        mergedMap.set(key, note);
-      }
-    }
-    return Array.from(mergedMap.values());
-  };
-
   const syncLocalNotesToCloud = async (cloudNotes: any[], token: string) => {
     const localNotes = getLocalNotes();
     if (!localNotes.length) return;
@@ -427,7 +400,7 @@ export default function MainPage() {
   }, [notes, metadata]);
 
   const exportCloudNotes = async (format: "json" | "md") => {
-    if (!user || !isPro || exporting) return;
+    if (!canExportNotes(user, isPro, exporting)) return;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setExporting(true);
@@ -457,17 +430,7 @@ export default function MainPage() {
         URL.revokeObjectURL(url);
         setExportMessage("Exported your cloud notes to JSON");
       } else {
-        const md = data
-          .map((note: any, idx: number) => {
-            const timestamp = new Date(note.created_at).toLocaleString();
-            const tags = metadata[String(note.id)]?.tags || [];
-            const tagsLine = tags.length ? `\n**Tags:** ${tags.join(", ")}` : "";
-            const imageSection = note.imageData
-              ? `\n\n![Image for note ${idx + 1}](${note.imageData})`
-              : "";
-            return `## Note ${idx + 1}\n**Created:** ${timestamp}${tagsLine}\n\n${note.plaintext || ""}${imageSection}\n`;
-          })
-          .join("\n---\n\n");
+        const md = formatNotesToMarkdown(data, metadata);
         const blob = new Blob([md], { type: "text/markdown" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
