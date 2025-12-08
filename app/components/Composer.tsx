@@ -11,13 +11,18 @@ export default function Composer({
   onNoteSaved,
   onLocalSave,
   user,
+  isPro,
+  proCheckoutUrl,
 }: {
   onNoteSaved: () => void;
   onLocalSave: (content: string, imageData?: string | null) => void;
   user: any;
+  isPro: boolean;
+  proCheckoutUrl?: string;
 }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [hasAutoSaved, setHasAutoSaved] = useState(false);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [visitorId, setVisitorId] = useState<string | null>(null);
@@ -93,8 +98,9 @@ export default function Composer({
 
   const autoSave = async (partialText: string) => {
     if (!partialText) return;
+    const canUseCloud = user && isPro;
     // Always keep a local copy
-    onLocalSave(partialText, !user ? imageData : null);
+    onLocalSave(partialText, !canUseCloud ? imageData : null);
     if (visitorId) {
       const now = Date.now();
       if (now - lastSavePingRef.current > 5000) {
@@ -102,13 +108,13 @@ export default function Composer({
         void fetch("/api/track-save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId: visitorId, kind: user ? "cloud" : "local" }),
+          body: JSON.stringify({ clientId: visitorId, kind: canUseCloud ? "cloud" : "local" }),
         }).catch(() => {
           /* ignore */
         });
       }
     }
-    if (!user) return;
+    if (!canUseCloud) return;
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -144,8 +150,9 @@ export default function Composer({
     if (!text) return;
     setLoading(true);
     try {
+      const canUseCloud = user && isPro;
       // Always save locally
-      onLocalSave(text, !user ? imageData : null);
+      onLocalSave(text, !canUseCloud ? imageData : null);
       if (visitorId) {
         const now = Date.now();
         if (now - lastSavePingRef.current > 5000) {
@@ -153,14 +160,14 @@ export default function Composer({
           void fetch("/api/track-save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ clientId: visitorId, kind: user ? "cloud" : "local" }),
+            body: JSON.stringify({ clientId: visitorId, kind: canUseCloud ? "cloud" : "local" }),
           }).catch(() => {
             /* ignore */
           });
         }
       }
 
-      if (user) {
+      if (canUseCloud) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error("Not logged in");
 
@@ -197,6 +204,43 @@ export default function Composer({
   };
 
 
+  const startCheckout = async () => {
+    if (!user) {
+      setFlashMessage("Please sign in first.");
+      setTimeout(() => setFlashMessage(null), 3000);
+      return;
+    }
+
+    if (proCheckoutUrl) {
+      window.open(proCheckoutUrl, "_blank", "noopener");
+      return;
+    }
+
+    setCheckoutLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not logged in");
+
+      const res = await fetch("/api/checkout/pro", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.url) {
+        throw new Error(body?.error || "Failed to start checkout");
+      }
+      window.location.href = body.url as string;
+    } catch (err: any) {
+      setFlashMessage(`Upgrade failed: ${err?.message || "Unknown error"}`);
+      setTimeout(() => setFlashMessage(null), 4000);
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
 
   return (
     <div className="w-full max-w-lg mx-auto mt-8 p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
@@ -206,13 +250,35 @@ export default function Composer({
           {flashMessage}
         </div>
       )}
-     
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {user ? (
+          <span className={`px-2 py-1 text-xs rounded ${isPro ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-orange-50 text-orange-700 border border-orange-200"}`}>
+            {isPro ? "Cloud sync now available" : "Cloud sync is a Pro feature"}
+          </span>
+        ) : (
+          <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 border border-gray-200">
+            Local mode
+          </span>
+        )}
+        {!isPro && user ? (
+          <button
+            type="button"
+            onClick={startCheckout}
+            disabled={checkoutLoading}
+            className={`px-3 py-1 text-xs font-semibold rounded text-white transition shadow-sm ${
+              checkoutLoading ? "bg-blue-400 cursor-wait" : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {checkoutLoading ? "Loading..." : "Upgrade to Pro"}
+          </button>
+        ) : null}
+      </div>
 
       <label className="block text-sm font-medium text-gray-700 mb-1">
         Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
       </label>
       <p className="text-[12px] text-gray-600 mb-2">
-        Saving while signed in also stores an encrypted copy in the cloud. 
+        Saving while signed in also stores an encrypted copy in the cloud (Pro). Logged out saves stay on this device.
       </p>
       <textarea
         value={text}

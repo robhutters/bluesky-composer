@@ -14,15 +14,26 @@ const LOCAL_NOTES_KEY = "bsky-composer-notes";
 export default function MainPage() {
   const { user } = useAuth();
   const [notes, setNotes] = useState<any[]>([]);
-
- 
+  const [plan, setPlan] = useState<string | null>(null);
+  const isPro = plan === "pro";
+  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user) {
-      fetchNotes();
-    } else {
-      loadLocalNotes();
+    if (!user || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("upgrade") === "success") {
+      setUpgradeMessage("Pro unlocked! Cloud sync is now available.");
+      void fetchPlanAndNotes();
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setPlan(null);
+      loadLocalNotes();
+      return;
+    }
+    void fetchPlanAndNotes();
   }, [user]);
 
   const loadLocalNotes = () => {
@@ -59,6 +70,65 @@ export default function MainPage() {
     });
   };
 
+  const fetchPlanAndNotes = async () => {
+    if (!user) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", session.user.id)
+      .single();
+
+    let userPlan = profile?.plan ?? "free";
+
+    // If the profile row is missing, create it client-side (allowed by RLS) so the webhook can update it later.
+    if (error && (error as any)?.code === "PGRST116") {
+      const { error: insertError } = await supabase.from("profiles").upsert({
+        id: session.user.id,
+        email: session.user.email,
+        plan: "free",
+      });
+      if (insertError) {
+        console.error("Failed to create profile row", insertError);
+      }
+      userPlan = "free";
+    } else if (error) {
+      console.error("Error loading plan", error);
+    }
+
+    setPlan(userPlan);
+
+    if (userPlan === "pro") {
+      await fetchNotes();
+    } else {
+      loadLocalNotes();
+    }
+
+    // Fallback: if client thinks it's free, ask server to sync from payments table
+    if (userPlan !== "pro") {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const res = await fetch("/api/sync-plan", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          });
+          const body = await res.json().catch(() => ({}));
+          if (res.ok && body?.plan === "pro") {
+            setPlan("pro");
+            await fetchNotes();
+          }
+        }
+      } catch (err) {
+        console.error("Plan sync check failed", err);
+      }
+    }
+  };
+
   const fetchNotes = async () => {
     if (!user) return;
     const { data: { session } } = await supabase.auth.getSession();
@@ -75,7 +145,7 @@ export default function MainPage() {
   };
 
   const deleteNote = async (id: string | number) => {
-    if (!user) {
+    if (!user || !isPro) {
       setNotes((prev: any[]) => {
         const next = prev.filter((note) => note.id !== id);
         if (typeof window !== "undefined") {
@@ -112,7 +182,7 @@ export default function MainPage() {
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
-      if (!user && typeof window !== "undefined") {
+      if ((!user || !isPro) && typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
       }
       return next;
@@ -127,6 +197,11 @@ export default function MainPage() {
 
 
       <main className="w-full max-w-[800px] flex-col flex justify-center">
+        {upgradeMessage && (
+          <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm">
+            {upgradeMessage}
+          </div>
+        )}
         <Image
           src="/assets/quote.jpg"
           alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'"
@@ -144,7 +219,13 @@ export default function MainPage() {
 
         {user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
       {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
-      <Composer onNoteSaved={fetchNotes} onLocalSave={addLocalNote} user={user} />
+      <Composer
+        onNoteSaved={fetchNotes}
+        onLocalSave={addLocalNote}
+        user={user}
+        isPro={plan === "pro"}
+        proCheckoutUrl={process.env.NEXT_PUBLIC_PRO_CHECKOUT_URL || ""}
+      />
     
       <NotesList notes={notes} onDelete={deleteNote} onReorder={reorderNotes} />
 
@@ -152,7 +233,7 @@ export default function MainPage() {
         <div>
           <div className="p-4 border mt-12 rounded bg-yellow-50">
             <p className="text-sm">
-              You’re browsing anonymously. Your draft and saved notes stay on this device. Sign in to back up notes to the cloud.
+              You’re browsing anonymously. Your draft and saved notes stay on this device. Sign in and upgrade to Pro to back up notes to the cloud.
             </p>
           </div>
           <Auth />
