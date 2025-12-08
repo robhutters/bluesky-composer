@@ -24,3 +24,17 @@ create policy "notes_delete_owner" on public.notes
   for delete using (auth.uid() = user_id);
 ```
 Keep the service-role key server-side only. If you use RPCs, continue passing the auth token so `auth.uid()` resolves.
+
+## Pro Features
+
+Cloud sync (already live)
+
+Version history & restore: keep previous drafts per note; “restore last version”.
+
+Backup/export: one-click export (txt/JSON), scheduled email/Drive/Dropbox.
+
+Organization: tags and pinned notes; search/filter by tag or text (basic search free, advanced filters Pro).
+
+Limits: raise cloud storage caps (e.g., free up to X notes/KB; Pro unlimited).
+
+QoL: templates/snippets for common posts, Markdown support, preview with character counters.
