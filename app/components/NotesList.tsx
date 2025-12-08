@@ -5,7 +5,8 @@ import { useState } from "react";
 type NotesListProps = {
   notes: any[];
   onDelete: (id: string | number) => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
+  onReorder: (fromId: string | number, toId: string | number) => void;
+  onMoveRelative: (id: string | number, direction: "up" | "down") => void;
   metadata: Record<string, { pinned: boolean; tags: string[] }>;
   onTogglePin: (id: string | number) => void;
   onAddTag: (id: string | number, tag: string) => void;
@@ -13,7 +14,7 @@ type NotesListProps = {
   canOrganize: boolean;
 };
 
-export default function NotesList({ notes, onDelete, onReorder, metadata, onTogglePin, onAddTag, onRemoveTag, canOrganize }: NotesListProps) {
+export default function NotesList({ notes, onDelete, onReorder, onMoveRelative, metadata, onTogglePin, onAddTag, onRemoveTag, canOrganize }: NotesListProps) {
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
   const [tagInputs, setTagInputs] = useState<Record<string | number, string>>({});
 
@@ -32,30 +33,34 @@ export default function NotesList({ notes, onDelete, onReorder, metadata, onTogg
   return (
     <div className="mt-6">
       <h3 className="text-lg font-semibold mb-3">Your Notes</h3>
-      <p className="text-xs text-gray-600 mb-2">Drag and drop to reorder your notes.</p>
+      <p className="text-xs text-gray-600 mb-2">Drag and drop to reorder your notes (PRO only). Use the up/down buttons below (PRO only).</p>
       <ul className="space-y-3">
         {notes.map((note, index) => {
           const meta = metadata[String(note.id)] || { pinned: false, tags: [] };
           return (
             <li
               key={note.id}
-              className="p-4 border rounded bg-white"
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData("text/plain", index.toString());
-                e.dataTransfer.effectAllowed = "move";
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const from = Number(e.dataTransfer.getData("text/plain"));
-                if (!Number.isNaN(from)) {
-                  onReorder(from, index);
-                }
-              }}
+            className={`p-4 border rounded bg-white ${canOrganize ? "" : "select-none"}`}
+            draggable={canOrganize}
+            onDragStart={(e) => {
+              if (!canOrganize) return;
+              e.dataTransfer.setData("text/plain", String(note.id));
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragOver={(e) => {
+              if (!canOrganize) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(e) => {
+              if (!canOrganize) return;
+              e.preventDefault();
+              const fromId = e.dataTransfer.getData("text/plain");
+              if (fromId) {
+                onReorder(fromId, note.id);
+              }
+              e.dataTransfer.clearData();
+            }}
             >
               <div className="flex items-center justify-between text-xs text-gray-500 mb-2 gap-2">
                 <div className="flex items-center gap-2">
@@ -63,6 +68,24 @@ export default function NotesList({ notes, onDelete, onReorder, metadata, onTogg
                   <span>{new Date(note.created_at).toLocaleString()}</span>
                 </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onMoveRelative(note.id, "up")}
+                  className={`px-2 py-1 text-xs font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
+                  disabled={!canOrganize}
+                  title={canOrganize ? "Move up" : "Pro feature"}
+                >
+                  ↑ Up
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMoveRelative(note.id, "down")}
+                  className={`px-2 py-1 text-xs font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
+                  disabled={!canOrganize}
+                  title={canOrganize ? "Move down" : "Pro feature"}
+                >
+                  ↓ Down
+                </button>
                 <button
                   type="button"
                   onClick={() => canOrganize && onTogglePin(note.id)}

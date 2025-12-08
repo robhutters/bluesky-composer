@@ -27,6 +27,8 @@ export default function MainPage() {
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, NoteMeta>>({});
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<boolean>(false);
 
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
@@ -252,14 +254,30 @@ export default function MainPage() {
     }
   };
 
-  const reorderNotes = (fromIndex: number, toIndex: number) => {
+  const reorderNotes = (fromId: string | number, toId: string | number) => {
     setNotes((prev: any[]) => {
-      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) {
-        return prev;
-      }
+      const fromIdx = prev.findIndex((n) => String(n.id) === String(fromId));
+      const toIdx = prev.findIndex((n) => String(n.id) === String(toId));
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
       const next = [...prev];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      if ((!user || !isPro) && typeof window !== "undefined") {
+        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const moveRelative = (id: string | number, direction: "up" | "down") => {
+    setNotes((prev: any[]) => {
+      const idx = prev.findIndex((n) => String(n.id) === String(id));
+      if (idx === -1) return prev;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(idx, 1);
+      next.splice(targetIdx, 0, moved);
       if ((!user || !isPro) && typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
       }
@@ -386,25 +404,87 @@ export default function MainPage() {
     const refetch = await fetch("/api/getNotes", {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (refetch.ok) {
-      const data = await refetch.json();
-      setNotes(mergeLocalAndCloud(localNotes, data));
-      if (pushedCount > 0) {
-        setSyncMessage(`Synced ${pushedCount} local note(s) to cloud`);
+      if (refetch.ok) {
+        const data = await refetch.json();
+        setNotes(mergeLocalAndCloud(localNotes, data));
+        if (pushedCount > 0) {
+          setSyncMessage(`Synced ${pushedCount} local note(s) to cloud`);
         setTimeout(() => setSyncMessage(null), 4000);
       }
     }
   };
 
+  // Preserve manual order; only lift pinned items to the top while keeping relative order
   const sortedNotes = useMemo(() => {
-    return [...notes].sort((a, b) => {
-      const metaA = metadata[String(a.id)];
-      const metaB = metadata[String(b.id)];
-      if (metaA?.pinned && !metaB?.pinned) return -1;
-      if (!metaA?.pinned && metaB?.pinned) return 1;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+    const pinned: any[] = [];
+    const regular: any[] = [];
+    for (const n of notes) {
+      const isPinned = metadata[String(n.id)]?.pinned;
+      if (isPinned) pinned.push(n);
+      else regular.push(n);
+    }
+    return [...pinned, ...regular];
   }, [notes, metadata]);
+
+  const exportCloudNotes = async (format: "json" | "md") => {
+    if (!user || !isPro || exporting) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    setExporting(true);
+    try {
+      const res = await fetch("/api/getNotes", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch notes");
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Unexpected notes payload");
+
+      if (format === "json") {
+        const enriched = data.map((note: any) => {
+          const meta = metadata[String(note.id)] || {};
+          return {
+            ...note,
+            tags: meta.tags || [],
+            imageData: note.imageData || null,
+          };
+        });
+        const blob = new Blob([JSON.stringify(enriched, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "bluesky-composer-notes.json";
+        link.click();
+        URL.revokeObjectURL(url);
+        setExportMessage("Exported your cloud notes to JSON");
+      } else {
+        const md = data
+          .map((note: any, idx: number) => {
+            const timestamp = new Date(note.created_at).toLocaleString();
+            const tags = metadata[String(note.id)]?.tags || [];
+            const tagsLine = tags.length ? `\n**Tags:** ${tags.join(", ")}` : "";
+            const imageSection = note.imageData
+              ? `\n\n![Image for note ${idx + 1}](${note.imageData})`
+              : "";
+            return `## Note ${idx + 1}\n**Created:** ${timestamp}${tagsLine}\n\n${note.plaintext || ""}${imageSection}\n`;
+          })
+          .join("\n---\n\n");
+        const blob = new Blob([md], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "bluesky-composer-notes.md";
+        link.click();
+        URL.revokeObjectURL(url);
+        setExportMessage("Exported your cloud notes to Markdown");
+      }
+      setTimeout(() => setExportMessage(null), 4000);
+    } catch (err: any) {
+      setExportMessage(err?.message || "Export failed");
+      setTimeout(() => setExportMessage(null), 4000);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <>
@@ -422,6 +502,11 @@ export default function MainPage() {
         {syncMessage && (
           <div className="mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 shadow-sm">
             {syncMessage}
+          </div>
+        )}
+        {exportMessage && (
+          <div className="mb-4 rounded border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 shadow-sm">
+            {exportMessage}
           </div>
         )}
         <Image
@@ -453,6 +538,7 @@ export default function MainPage() {
         notes={sortedNotes}
         onDelete={deleteNote}
         onReorder={reorderNotes}
+        onMoveRelative={moveRelative}
         metadata={metadata}
         onTogglePin={togglePin}
         onAddTag={addTag}
@@ -460,12 +546,31 @@ export default function MainPage() {
         canOrganize={!!user && isPro}
       />
 
+      {user && isPro && (
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={() => exportCloudNotes("json")}
+            disabled={exporting}
+            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm ${exporting ? "bg-indigo-400 cursor-wait" : "bg-indigo-600 hover:bg-indigo-700"}`}
+          >
+            {exporting ? "Exporting..." : "Export notes (JSON)"}
+          </button>
+          <button
+            onClick={() => exportCloudNotes("md")}
+            disabled={exporting}
+            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm ${exporting ? "bg-purple-400 cursor-wait" : "bg-purple-600 hover:bg-purple-700"}`}
+          >
+            {exporting ? "Exporting..." : "Export notes (Markdown)"}
+          </button>
+        </div>
+      )}
+
       {!user && (
         <div>
           <div className="mt-8 mb-4 p-4 border rounded bg-white shadow-sm">
-            <h4 className="text-base font-semibold mb-2">PRO</h4>
-            <p className="text-xs text-gray-600 mb-1">Pay once, keep Pro forever. Price: <span className="font-semibold text-gray-800">€15</span>.</p>
-            <p className="text-xs text-gray-600 mb-3">Here’s what you get now and what’s coming soon:</p>
+            <h4 className="text-base sm:text-lg font-semibold mb-2">PRO</h4>
+            <p className="text-xs sm:text-sm text-gray-600 mb-1">Pay once, keep PRO forever. Price: <span className="font-semibold text-gray-800">€15</span>.</p>
+            <p className="text-xs sm:text-sm text-gray-600 mb-3">Here’s what you get now and what’s coming soon:</p>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm text-left border">
                 <thead className="bg-gray-50">
@@ -475,26 +580,36 @@ export default function MainPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="px-3 py-2 border">Encrypted cloud sync across devices</td>
-                    <td className="px-3 py-2 border text-emerald-700">Available</td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 border">Pinned notes & tags (organized list)</td>
-                    <td className="px-3 py-2 border text-emerald-700">Available</td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 border">Version history & restore</td>
-                    <td className="px-3 py-2 border text-orange-600">Coming soon</td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 border">Advanced search & filters</td>
-                    <td className="px-3 py-2 border text-orange-600">Coming soon</td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 border">Export/backup (email/Drive)</td>
-                    <td className="px-3 py-2 border text-orange-600">Coming soon</td>
-                  </tr>
+                  {[
+                    { feature: "Encrypted cloud sync across devices", status: "Available (PRO)" },
+                    { feature: "Pinned notes & tags (organized list)", status: "Available (PRO)" },
+                    { feature: "Drag & drop reordering", status: "Available (PRO)" },
+                    { feature: "Export notes (JSON + Markdown with tags/images)", status: "Available (PRO)" },
+                    { feature: "Version history & restore", status: "Coming soon (PRO)" },
+                    { feature: "Advanced search & filters", status: "Coming soon (PRO)" },
+                  ].map((row, idx) => (
+                    <tr
+                      key={row.feature}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", String(idx));
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        // Cosmetic drag affordance only; no reordering needed
+                      }}
+                    >
+                      <td className="px-3 py-2 border">{row.feature}</td>
+                      <td className={`px-3 py-2 border ${row.status.toLowerCase().includes("available") ? "text-emerald-700" : "text-orange-600"}`}>
+                        {row.status}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
