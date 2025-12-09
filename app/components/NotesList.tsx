@@ -78,10 +78,9 @@ export default function NotesList({
               e.dataTransfer.clearData();
             }}
             >
-              <div className="flex items-center justify-between text-xs text-gray-500 mb-2 gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2 text-xs text-gray-500">
                 <div className="flex items-center gap-2">
                   {meta.pinned && <span className="text-amber-600 font-semibold">★ Pinned</span>}
-                  <span>{new Date(note.created_at).toLocaleString()}</span>
                   {allowThreadSelect && (
                     <label className="flex items-center gap-1 text-[11px] text-gray-600">
                       <input
@@ -94,11 +93,11 @@ export default function NotesList({
                     </label>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onMoveRelative(note.id, "up")}
-                  className={`px-2 py-1 text-xs font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
+                  className={`px-2 py-1 text-[11px] font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
                   disabled={!canOrganize}
                   title={canOrganize ? "Move up" : "Pro feature"}
                 >
@@ -107,7 +106,7 @@ export default function NotesList({
                 <button
                   type="button"
                   onClick={() => onMoveRelative(note.id, "down")}
-                  className={`px-2 py-1 text-xs font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
+                  className={`px-2 py-1 text-[11px] font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
                   disabled={!canOrganize}
                   title={canOrganize ? "Move down" : "Pro feature"}
                 >
@@ -117,28 +116,28 @@ export default function NotesList({
                   type="button"
                   onClick={() => canOrganize && onTogglePin(note.id)}
                   disabled={!canOrganize}
-                  className={`text-xs font-semibold ${canOrganize ? "text-amber-600 hover:text-amber-800" : "text-gray-400 cursor-not-allowed"}`}
+                  className={`text-[11px] font-semibold ${canOrganize ? "text-amber-600 hover:text-amber-800" : "text-gray-400 cursor-not-allowed"}`}
                   title={canOrganize ? undefined : "Pro feature"}
                 >
                   {meta.pinned ? "Unpin" : "Pin"}
                 </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(note.id, note.plaintext)}
-                    className="text-xs font-semibold text-blue-600 hover:text-blue-800"
-                  >
-                    {copiedId === note.id ? "Copied!" : "Copy"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(note.id)}
-                    className="text-xs font-semibold text-red-600 hover:text-red-800"
-                  >
-                    Delete
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(note.id, note.plaintext)}
+                  className="text-[11px] font-semibold text-blue-600 hover:text-blue-800"
+                >
+                  {copiedId === note.id ? "Copied!" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(note.id)}
+                  className="text-[11px] font-semibold text-red-600 hover:text-red-800"
+                >
+                  Delete
+                </button>
               </div>
-              <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+              </div>
+              <p className="text-sm text-gray-800 whitespace-pre-wrap wrap-break-word">
                 {note.plaintext}
               </p>
               {note.imageData && (
@@ -181,6 +180,9 @@ export default function NotesList({
                 disabled={!canOrganize}
                 className={`text-xs border px-2 py-1 rounded ${canOrganize ? "" : "bg-gray-100 cursor-not-allowed"}`}
               />
+            </div>
+            <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500">
+              <span>{new Date(note.created_at).toLocaleString()}</span>
             </div>
           </li>
         );

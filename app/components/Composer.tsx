@@ -330,7 +330,7 @@ export default function Composer({
 
 
   return (
-    <div className="w-full max-w-lg mx-auto mt-8 p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
+    <div className="w-full max-w-lg mx-auto mt-8 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
       <h2 className="text-xl font-semibold mb-4">BlueSky Composer</h2>
       {flashMessage && (
         <div className="fixed top-4 right-4 z-50 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg">

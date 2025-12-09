@@ -600,14 +600,16 @@ export default function MainPage() {
           alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'"
           width={600}
           height={200}
-          className="mx-auto mb-4 mt-8"
+          sizes="100vw"
+          className="mx-auto mb-4 mt-8 w-full max-w-[600px] h-auto"
         />
         <Image
           src="/assets/bluesky-demo.gif"
           alt="BlueSky Composer demo"
           width={600}
           height={400}
-          className="mx-auto mb-8 rounded-lg border border-gray-200 shadow-sm"
+          sizes="100vw"
+          className="mx-auto mb-8 w-full max-w-[600px] h-auto rounded-lg border border-gray-200 shadow-sm"
         />
 
         {user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
@@ -636,7 +638,7 @@ export default function MainPage() {
       />
 
       {user && isPro && (
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-4 w-full flex flex-col gap-2 sm:flex-row sm:justify-end">
           {(threadMessage || exportMessage) && (
             <div className="flex-1 rounded border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm">
               <div className="font-semibold text-gray-800 mb-2">Messages</div>
@@ -667,21 +669,21 @@ export default function MainPage() {
           <button
             onClick={() => exportCloudNotes("json")}
             disabled={exporting}
-            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm ${exporting ? "bg-indigo-400 cursor-wait" : "bg-indigo-600 hover:bg-indigo-700"}`}
+            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${exporting ? "bg-indigo-400 cursor-wait" : "bg-indigo-600 hover:bg-indigo-700"}`}
           >
             {exporting ? "Exporting..." : "Export notes (JSON)"}
           </button>
           <button
             onClick={() => exportCloudNotes("md")}
             disabled={exporting}
-            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm ${exporting ? "bg-purple-400 cursor-wait" : "bg-purple-600 hover:bg-purple-700"}`}
+            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${exporting ? "bg-purple-400 cursor-wait" : "bg-purple-600 hover:bg-purple-700"}`}
           >
             {exporting ? "Exporting..." : "Export notes (Markdown)"}
           </button>
           <button
             onClick={postThreadToBluesky}
             disabled={postingThread || threadSelection.size === 0}
-            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm ${postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"}`}
+            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"}`}
           >
             {postingThread ? "Posting thread..." : "Post selected as thread"}
           </button>
