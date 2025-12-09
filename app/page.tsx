@@ -34,6 +34,7 @@ export default function MainPage() {
   const [threadMessage, setThreadMessage] = useState<string | null>(null);
   const [postingThread, setPostingThread] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
@@ -183,7 +184,10 @@ export default function MainPage() {
     if (res.ok) {
       const data = await res.json();
       const local = getLocalNotes();
-      setNotes(mergeLocalAndCloud(local, data));
+      const merged = mergeLocalAndCloud(local, data).filter(
+        (note: any) => !deletedIds.has(String(note.id))
+      );
+      setNotes(merged);
       if (isPro) {
         await syncLocalNotesToCloud(data, session.access_token);
       }
@@ -191,7 +195,7 @@ export default function MainPage() {
         await fetchMetadata();
       }
     }
-  }, [isPro, user]);
+  }, [deletedIds, isPro, user]);
 
   const fetchMetadata = async () => {
     if (!user || !isPro) return;
@@ -253,6 +257,11 @@ export default function MainPage() {
     });
 
     if (res.ok) {
+      setDeletedIds((prev) => {
+        const next = new Set(prev);
+        next.add(String(id));
+        return next;
+      });
       setNotes((prev: any) => {
         const next = prev.filter((note: any) => note.id !== id);
         // also clear from local cache so mergeLocalAndCloud doesn't resurrect it
@@ -271,6 +280,7 @@ export default function MainPage() {
       });
       setDeleteMessage("Note deleted");
       setTimeout(() => setDeleteMessage(null), 2500);
+      void fetchNotes();
     } else {
       console.error("Failed to delete note");
     }
@@ -581,7 +591,7 @@ export default function MainPage() {
           </div>
         )}
         {deleteMessage && (
-          <div className="mb-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 shadow-sm">
+          <div className="fixed top-4 right-4 z-50 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 shadow-lg">
             {deleteMessage}
           </div>
         )}
