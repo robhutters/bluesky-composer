@@ -21,6 +21,10 @@ export async function POST(req: Request) {
   const authHeader = req.headers.get("authorization");
   const token = authHeader?.replace("Bearer ", "");
 
+  const body = await req
+    .json()
+    .catch(() => ({} as { clientId?: string | null | undefined }));
+
   const {
     data: { user },
     error,
@@ -47,10 +51,12 @@ export async function POST(req: Request) {
       cancel_url: `${origin}/?upgrade=cancel`,
       metadata: {
         user_id: user.id,
+        client_id: body?.clientId || "",
       },
       payment_intent_data: {
         metadata: {
           user_id: user.id,
+          client_id: body?.clientId || "",
         },
       },
     });

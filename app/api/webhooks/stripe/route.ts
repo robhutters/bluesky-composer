@@ -41,6 +41,7 @@ export async function POST(req: Request) {
         const userId =
           (session.client_reference_id as string | null) ||
           (session.metadata?.user_id as string | undefined);
+        const clientId = session.metadata?.client_id || null;
         if (!userId) break;
 
         // Record payment for auditing/idempotency
@@ -79,6 +80,20 @@ export async function POST(req: Request) {
           if (upsertError) {
             console.error("Failed to set pro plan", upsertError);
             throw upsertError;
+          }
+
+          // Track purchase event by client_id for banner-to-purchase ratio
+          if (clientId) {
+            try {
+              const { error: saveError } = await supabaseAdmin
+                .from("composer_saves")
+                .insert({ client_id: clientId, kind: "pro_purchase" });
+              if (saveError) {
+                console.error("Failed to track pro purchase", saveError);
+              }
+            } catch (err) {
+              console.error("Unexpected error tracking pro purchase", err);
+            }
           }
         }
         break;

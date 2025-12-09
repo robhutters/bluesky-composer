@@ -305,6 +305,10 @@ export default function Composer({
 
     setCheckoutLoading(true);
     try {
+      const visitor =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(LOCAL_VISITOR_KEY)
+          : null;
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
 
@@ -314,6 +318,7 @@ export default function Composer({
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
+        body: JSON.stringify({ clientId: visitor || undefined }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body?.url) {

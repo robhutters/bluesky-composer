@@ -15,6 +15,7 @@ type NotesListProps = {
   allowThreadSelect?: boolean;
   selectedForThread?: Set<string | number>;
   onToggleThreadSelect?: (id: string | number) => void;
+  threadSelectEnabled?: boolean;
 };
 
 export default function NotesList({
@@ -30,6 +31,7 @@ export default function NotesList({
   allowThreadSelect = false,
   selectedForThread,
   onToggleThreadSelect,
+  threadSelectEnabled = true,
 }: NotesListProps) {
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
   const [tagInputs, setTagInputs] = useState<Record<string | number, string>>({});
@@ -86,10 +88,11 @@ export default function NotesList({
                       <input
                         type="checkbox"
                         checked={selectedForThread?.has(note.id) || false}
-                        onChange={() => onToggleThreadSelect && onToggleThreadSelect(note.id)}
+                        onChange={() => threadSelectEnabled && onToggleThreadSelect && onToggleThreadSelect(note.id)}
                         className="h-3 w-3"
+                        disabled={!threadSelectEnabled}
                       />
-                      <span>Thread</span>
+                      <span className={!threadSelectEnabled ? "opacity-50" : ""}>Thread</span>
                     </label>
                   )}
                 </div>

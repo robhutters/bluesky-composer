@@ -12,6 +12,8 @@ import { useAuth } from "./providers/AuthProvider";
 
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
+const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
+const BANNER_SEEN_KEY = "bsky-composer-banner-seen";
 
 type NoteMeta = {
   noteId: string | number;
@@ -35,6 +37,19 @@ export default function MainPage() {
   const [postingThread, setPostingThread] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [showBanner, setShowBanner] = useState(false);
+  const [visitorId, setVisitorId] = useState<string | null>(null);
+
+  const ensureVisitorId = () => {
+    if (typeof window === "undefined") return null;
+    let vid = window.localStorage.getItem(LOCAL_VISITOR_KEY);
+    if (!vid) {
+      vid = crypto.randomUUID();
+      window.localStorage.setItem(LOCAL_VISITOR_KEY, vid);
+    }
+    setVisitorId(vid);
+    return vid;
+  };
 
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
@@ -44,6 +59,23 @@ export default function MainPage() {
       void fetchPlanAndNotes();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const vid = ensureVisitorId();
+    const seen = window.localStorage.getItem(BANNER_SEEN_KEY);
+    if (!seen) {
+      setShowBanner(true);
+      window.localStorage.setItem(BANNER_SEEN_KEY, "1");
+      if (vid) {
+        void fetch("/api/track-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: vid, kind: "promo_banner_shown" }),
+        }).catch(() => {});
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -586,6 +618,20 @@ export default function MainPage() {
             {syncMessage}
           </div>
         )}
+        {showBanner && (
+          <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <div className="font-semibold">Limited beta offer: €15 lifetime PRO</div>
+              <div className="text-xs text-amber-700">Available for a short time while the app is in beta.</div>
+            </div>
+            <button
+              className="self-start sm:self-auto px-3 py-1 text-xs font-semibold rounded border border-amber-300 bg-white text-amber-700 hover:bg-amber-100"
+              onClick={() => setShowBanner(false)}
+            >
+              Got it
+            </button>
+          </div>
+        )}
         {(threadMessage || exportMessage || deleteMessage) && (
           <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
             {[threadMessage, exportMessage, deleteMessage]
@@ -648,6 +694,7 @@ export default function MainPage() {
         onRemoveTag={removeTag}
         canOrganize={!!user && isPro}
         allowThreadSelect
+        threadSelectEnabled={!!user && isPro}
         selectedForThread={threadSelection}
         onToggleThreadSelect={toggleThreadSelect}
       />
@@ -716,10 +763,13 @@ export default function MainPage() {
                 </thead>
                 <tbody>
                   {[
-                    { feature: "Encrypted cloud sync across devices", status: "Available (PRO)" },
-                    { feature: "Pinned notes & tags (organized list)", status: "Available (PRO)" },
-                    { feature: "Drag & drop reordering", status: "Available (PRO)" },
-                    { feature: "Export notes (JSON + Markdown with tags/images)", status: "Available (PRO)" },
+                    { feature: "Organize your notes (drag & drop + up/down + tags/pins)", status: "Available (PRO)" },
+                    { feature: "Export notes (JSON + Markdown with tags/images included)", status: "Available (PRO)" },
+                    { feature: "Post directly to Bluesky with a secure app password", status: "Available (PRO)" },
+                    { feature: "Post selected notes as a thread to Bluesky", status: "Available (PRO)" },
+                    { feature: "Copy selected notes to clipboard as text", status: "Available (PRO)" },
+                    { feature: "Realtime updates (Supabase) with polling fallback", status: "Available (PRO)" },
+                    { feature: "Delete protection (notes and metadata deleted across local/cloud)", status: "Available (PRO)" },
                     { feature: "Version history & restore", status: "Coming soon (PRO)" },
                     { feature: "Advanced search & filters", status: "Coming soon (PRO)" },
                   ].map((row, idx) => (
@@ -748,6 +798,15 @@ export default function MainPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+          <div className="mt-6 mb-4 p-4 border rounded bg-white shadow-sm">
+            <h4 className="text-base sm:text-lg font-semibold mb-2">What you get for free</h4>
+            <ul className="text-xs sm:text-sm text-gray-700 list-disc list-inside space-y-1">
+              <li>Local mode: drafts and saved notes stay on this device</li>
+              <li>Optional local image attachments (never uploaded to Supabase)</li>
+              <li>Write, copy, and delete notes locally</li>
+              <li>Bluesky posting from the composer (single post) with a local-only app password</li>
+            </ul>
           </div>
           <div className="p-4 border mt-12 rounded bg-yellow-50">
             <p className="text-sm">
