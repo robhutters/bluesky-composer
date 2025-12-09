@@ -33,9 +33,23 @@ export default function Composer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyAppPassword, setBskyAppPassword] = useState("");
+  const [bskyLinked, setBskyLinked] = useState(false);
+  const [showBskyForm, setShowBskyForm] = useState(false);
   const [posting, setPosting] = useState(false);
   const [postMessage, setPostMessage] = useState<string | null>(null);
   const hasBskyCreds = Boolean(bskyHandle && bskyAppPassword);
+  const clearBskyCreds = () => {
+    setBskyHandle("");
+    setBskyAppPassword("");
+    setBskyLinked(false);
+    setShowBskyForm(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("bsky-handle");
+      window.localStorage.removeItem("bsky-app-password");
+    }
+    setPostMessage("Bluesky credentials cleared.");
+    setTimeout(() => setPostMessage(null), 2500);
+  };
 
   const sanitizePlainText = (value: unknown) => {
     if (typeof value !== "string") return "";
@@ -61,10 +75,30 @@ export default function Composer({
       const storedPass = window.localStorage.getItem("bsky-app-password");
       if (storedHandle) setBskyHandle(storedHandle);
       if (storedPass) setBskyAppPassword(storedPass);
+      if (storedHandle && storedPass) {
+        setBskyLinked(true);
+        setShowBskyForm(false);
+      }
     } catch {
       /* ignore */
     }
   }, []);
+
+  const saveBskyCreds = () => {
+    if (!bskyHandle.trim() || !bskyAppPassword.trim()) {
+      setPostMessage("Add your Bluesky handle and app password, then save.");
+      setTimeout(() => setPostMessage(null), 3000);
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("bsky-handle", bskyHandle.trim());
+      window.localStorage.setItem("bsky-app-password", bskyAppPassword.trim());
+    }
+    setBskyLinked(true);
+    setShowBskyForm(false);
+    setPostMessage("Bluesky credentials saved.");
+    setTimeout(() => setPostMessage(null), 3000);
+  };
 
   // Persist draft locally on every change (works for signed-in and anonymous)
   useEffect(() => {
@@ -313,24 +347,29 @@ export default function Composer({
             Local mode
           </span>
         )}
-        {hasBskyCreds && (
-          <button
-            type="button"
-            onClick={() => {
-              setBskyHandle("");
-              setBskyAppPassword("");
-              if (typeof window !== "undefined") {
-                window.localStorage.removeItem("bsky-handle");
-                window.localStorage.removeItem("bsky-app-password");
-              }
-              setPostMessage("Bluesky credentials cleared.");
-              setTimeout(() => setPostMessage(null), 2500);
-            }}
-            className="px-2 py-1 text-xs rounded border border-sky-200 bg-sky-50 text-sky-700 font-semibold hover:bg-sky-100 transition"
-            title="Clear stored Bluesky credentials"
-          >
-            Bluesky linked · Logout
-          </button>
+        {bskyLinked && (
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-1 text-xs rounded border border-sky-200 bg-sky-50 text-sky-700 font-semibold">
+              Bluesky linked
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setShowBskyForm((prev) => !prev);
+              }}
+              className="px-2 py-1 text-xs rounded border border-sky-200 bg-white text-sky-700 font-semibold hover:bg-sky-50 transition"
+            >
+              Manage
+            </button>
+            <button
+              type="button"
+              onClick={clearBskyCreds}
+              className="px-2 py-1 text-xs rounded border border-sky-200 bg-white text-sky-700 font-semibold hover:bg-sky-50 transition"
+              title="Clear stored Bluesky credentials"
+            >
+              Logout
+            </button>
+          </div>
         )}
         {!isPro && user ? (
           <button
@@ -349,7 +388,7 @@ export default function Composer({
       <label className="block text-sm font-medium text-gray-700 mb-1">
         Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
       </label>
-      {!hasBskyCreds && (
+      {(!bskyLinked || showBskyForm) && (
         <div className="mb-3 rounded border border-blue-100 bg-blue-50/70 p-3">
           <div className="flex flex-col gap-2">
             <div className="flex flex-col sm:flex-row gap-2">
@@ -359,9 +398,6 @@ export default function Composer({
                 value={bskyHandle}
                 onChange={(e) => {
                   setBskyHandle(e.target.value);
-                  if (typeof window !== "undefined") {
-                    window.localStorage.setItem("bsky-handle", e.target.value);
-                  }
                 }}
                 className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
               />
@@ -371,16 +407,31 @@ export default function Composer({
                 value={bskyAppPassword}
                 onChange={(e) => {
                   setBskyAppPassword(e.target.value);
-                  if (typeof window !== "undefined") {
-                    window.localStorage.setItem("bsky-app-password", e.target.value);
-                  }
                 }}
                 className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
               />
             </div>
             <p className="text-[11px] text-blue-700">
-              Optional: add your Bluesky handle + app password to post directly to your timeline. Stored only in your browser; clear the fields to remove.
+              Optional: add your Bluesky handle + <strong>app password</strong> (not your regular login password) to post directly to your timeline. Stored only in your browser; clear the fields to remove.
             </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={saveBskyCreds}
+                className="px-3 py-2 text-xs font-semibold rounded bg-sky-600 text-white hover:bg-sky-700 transition"
+              >
+                Save Bluesky login
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBskyForm(false);
+                }}
+                className="text-xs text-sky-700 underline"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
