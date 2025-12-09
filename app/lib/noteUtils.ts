@@ -14,12 +14,21 @@ export const contentKey = (plaintext: string) => {
 
 export const mergeLocalAndCloud = (localNotes: any[], cloudNotes: any[]) => {
   const mergedMap = new Map<string, any>();
-  for (const note of cloudNotes) {
+  // Seed with local notes first so we can preserve fields (like imageData) even after cloud notes arrive.
+  for (const note of localNotes) {
     mergedMap.set(contentKey(note.plaintext), note);
   }
-  for (const note of localNotes) {
+  // When a cloud note exists for the same plaintext, prefer the cloud record for ids/timestamps
+  // but keep any locally stored imageData.
+  for (const note of cloudNotes) {
     const key = contentKey(note.plaintext);
-    if (!mergedMap.has(key)) {
+    const existing = mergedMap.get(key);
+    if (existing) {
+      mergedMap.set(key, {
+        ...note,
+        imageData: existing.imageData ?? note.imageData ?? null,
+      });
+    } else {
       mergedMap.set(key, note);
     }
   }

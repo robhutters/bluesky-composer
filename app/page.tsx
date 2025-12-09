@@ -30,6 +30,9 @@ export default function MainPage() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exporting, setExporting] = useState<boolean>(false);
+  const [threadSelection, setThreadSelection] = useState<Set<string | number>>(new Set());
+  const [threadMessage, setThreadMessage] = useState<string | null>(null);
+  const [postingThread, setPostingThread] = useState(false);
 
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
@@ -286,6 +289,15 @@ export default function MainPage() {
     });
   };
 
+  const toggleThreadSelect = (id: string | number) => {
+    setThreadSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const togglePin = (id: string | number) => {
     if (!user || !isPro) return;
     setMetadata((prev) => {
@@ -399,6 +411,55 @@ export default function MainPage() {
     return [...pinned, ...regular];
   }, [notes, metadata]);
 
+  const postThreadToBluesky = async () => {
+    if (!threadSelection.size) {
+      setThreadMessage("Select at least one note to post as a thread.");
+      setTimeout(() => setThreadMessage(null), 3000);
+      return;
+    }
+    const selectedNotes = sortedNotes.filter((n) => threadSelection.has(n.id));
+    if (!selectedNotes.length) {
+      setThreadMessage("Selected notes not found.");
+      setTimeout(() => setThreadMessage(null), 3000);
+      return;
+    }
+    const handle = typeof window !== "undefined" ? window.localStorage.getItem("bsky-handle") : "";
+    const appPassword =
+      typeof window !== "undefined" ? window.localStorage.getItem("bsky-app-password") : "";
+    if (!handle || !appPassword) {
+      setThreadMessage("Add your Bluesky handle + app password in the composer first.");
+      setTimeout(() => setThreadMessage(null), 4000);
+      return;
+    }
+
+    setPostingThread(true);
+    setThreadMessage(null);
+    try {
+      const res = await fetch("/api/bluesky/thread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: handle,
+          appPassword,
+          posts: selectedNotes.map((n) => ({
+            text: n.plaintext || "",
+            imageData: n.imageData || null,
+          })),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "Failed to post thread");
+      setThreadMessage(`Posted ${selectedNotes.length} note(s) as a thread ✔️`);
+      setThreadSelection(new Set());
+      setTimeout(() => setThreadMessage(null), 4000);
+    } catch (err: any) {
+      setThreadMessage(err?.message || "Failed to post thread");
+      setTimeout(() => setThreadMessage(null), 5000);
+    } finally {
+      setPostingThread(false);
+    }
+  };
+
   const exportCloudNotes = async (format: "json" | "md") => {
     if (!canExportNotes(user, isPro, exporting)) return;
     const { data: { session } } = await supabase.auth.getSession();
@@ -507,10 +568,40 @@ export default function MainPage() {
         onAddTag={addTag}
         onRemoveTag={removeTag}
         canOrganize={!!user && isPro}
+        allowThreadSelect
+        selectedForThread={threadSelection}
+        onToggleThreadSelect={toggleThreadSelect}
       />
 
       {user && isPro && (
         <div className="mt-4 flex justify-end gap-2">
+          {(threadMessage || exportMessage) && (
+            <div className="flex-1 rounded border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm">
+              <div className="font-semibold text-gray-800 mb-2">Messages</div>
+              {threadMessage && (
+                <div
+                  className={`mb-1 ${
+                    threadMessage.toLowerCase().includes("fail") || threadMessage.toLowerCase().includes("error")
+                      ? "text-red-700"
+                      : "text-emerald-700"
+                  }`}
+                >
+                  {threadMessage}
+                </div>
+              )}
+              {exportMessage && (
+                <div
+                  className={`${
+                    exportMessage.toLowerCase().includes("fail") || exportMessage.toLowerCase().includes("error")
+                      ? "text-red-700"
+                      : "text-emerald-700"
+                  }`}
+                >
+                  {exportMessage}
+                </div>
+              )}
+            </div>
+          )}
           <button
             onClick={() => exportCloudNotes("json")}
             disabled={exporting}
@@ -524,6 +615,13 @@ export default function MainPage() {
             className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm ${exporting ? "bg-purple-400 cursor-wait" : "bg-purple-600 hover:bg-purple-700"}`}
           >
             {exporting ? "Exporting..." : "Export notes (Markdown)"}
+          </button>
+          <button
+            onClick={postThreadToBluesky}
+            disabled={postingThread || threadSelection.size === 0}
+            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm ${postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"}`}
+          >
+            {postingThread ? "Posting thread..." : "Post selected as thread"}
           </button>
         </div>
       )}

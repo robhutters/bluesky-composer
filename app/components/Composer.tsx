@@ -31,19 +31,36 @@ export default function Composer({
   const [imageData, setImageData] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [bskyHandle, setBskyHandle] = useState("");
+  const [bskyAppPassword, setBskyAppPassword] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [postMessage, setPostMessage] = useState<string | null>(null);
+  const hasBskyCreds = Boolean(bskyHandle && bskyAppPassword);
+
+  const sanitizePlainText = (value: unknown) => {
+    if (typeof value !== "string") return "";
+    // Strip script tags and any HTML-like markup so only plain text is kept
+    const withoutScripts = value.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+    const withoutTags = withoutScripts.replace(/<\/?[^>]+>/g, "");
+    return withoutTags;
+  };
 
   // Load any locally saved draft on mount
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const stored = window.localStorage.getItem(LOCAL_DRAFT_KEY);
-      if (stored) setText(stored);
+      if (stored) setText(sanitizePlainText(stored));
       let vid = window.localStorage.getItem(LOCAL_VISITOR_KEY);
       if (!vid) {
         vid = crypto.randomUUID();
         window.localStorage.setItem(LOCAL_VISITOR_KEY, vid);
       }
       setVisitorId(vid);
+      const storedHandle = window.localStorage.getItem("bsky-handle");
+      const storedPass = window.localStorage.getItem("bsky-app-password");
+      if (storedHandle) setBskyHandle(storedHandle);
+      if (storedPass) setBskyAppPassword(storedPass);
     } catch {
       /* ignore */
     }
@@ -60,7 +77,7 @@ export default function Composer({
   }, [text]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
+    const value = sanitizePlainText(e.target.value);
 
     if (value.length > MAX_CHARACTERS) {
       if (!hasAutoSaved) {
@@ -98,9 +115,11 @@ export default function Composer({
 
   const autoSave = async (partialText: string) => {
     if (!partialText) return;
+    const safe = sanitizePlainText(partialText);
+    if (!safe) return;
     const canUseCloud = user && isPro;
     // Always keep a local copy
-    onLocalSave(partialText, !canUseCloud ? imageData : null);
+    onLocalSave(safe, imageData);
     if (visitorId) {
       const now = Date.now();
       if (now - lastSavePingRef.current > 5000) {
@@ -126,7 +145,7 @@ export default function Composer({
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ content: partialText }),
+          body: JSON.stringify({ content: safe }),
       });
       setLoading(false);
 
@@ -147,12 +166,13 @@ export default function Composer({
   };
 
   const saveNote = async () => {
-    if (!text) return;
+    const safe = sanitizePlainText(text);
+    if (!safe) return;
     setLoading(true);
     try {
       const canUseCloud = user && isPro;
       // Always save locally
-      onLocalSave(text, !canUseCloud ? imageData : null);
+      onLocalSave(safe, imageData);
       if (visitorId) {
         const now = Date.now();
         if (now - lastSavePingRef.current > 5000) {
@@ -177,7 +197,7 @@ export default function Composer({
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ content: text }),
+          body: JSON.stringify({ content: safe }),
         });
         setLoading(false);
 
@@ -200,6 +220,39 @@ export default function Composer({
       alert(`Error saving note: ${err.message ?? "Unknown error"}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const postToBluesky = async () => {
+    const safe = sanitizePlainText(text).trim();
+    if (!safe) return;
+    if (!bskyHandle || !bskyAppPassword) {
+      setPostMessage("Add your Bluesky handle and app password first.");
+      setTimeout(() => setPostMessage(null), 3000);
+      return;
+    }
+    setPosting(true);
+    setPostMessage(null);
+    try {
+      const res = await fetch("/api/bluesky/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: bskyHandle.trim(),
+          appPassword: bskyAppPassword.trim(),
+          text: safe,
+          imageData: imageData || null,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "Failed to post");
+      setPostMessage("Posted to Bluesky ✔️");
+      setTimeout(() => setPostMessage(null), 4000);
+    } catch (err: any) {
+      setPostMessage(err?.message || "Failed to post");
+      setTimeout(() => setPostMessage(null), 5000);
+    } finally {
+      setPosting(false);
     }
   };
 
@@ -260,6 +313,25 @@ export default function Composer({
             Local mode
           </span>
         )}
+        {hasBskyCreds && (
+          <button
+            type="button"
+            onClick={() => {
+              setBskyHandle("");
+              setBskyAppPassword("");
+              if (typeof window !== "undefined") {
+                window.localStorage.removeItem("bsky-handle");
+                window.localStorage.removeItem("bsky-app-password");
+              }
+              setPostMessage("Bluesky credentials cleared.");
+              setTimeout(() => setPostMessage(null), 2500);
+            }}
+            className="px-2 py-1 text-xs rounded border border-sky-200 bg-sky-50 text-sky-700 font-semibold hover:bg-sky-100 transition"
+            title="Clear stored Bluesky credentials"
+          >
+            Bluesky linked · Logout
+          </button>
+        )}
         {!isPro && user ? (
           <button
             type="button"
@@ -277,9 +349,42 @@ export default function Composer({
       <label className="block text-sm font-medium text-gray-700 mb-1">
         Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
       </label>
-      <p className="text-[12px] text-gray-600 mb-2">
-        Saving while signed in also stores an encrypted copy in the cloud (Pro). Logged out saves stay on this device.
-      </p>
+      {!hasBskyCreds && (
+        <div className="mb-3 rounded border border-blue-100 bg-blue-50/70 p-3">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                placeholder="your-handle.bsky.social"
+                value={bskyHandle}
+                onChange={(e) => {
+                  setBskyHandle(e.target.value);
+                  if (typeof window !== "undefined") {
+                    window.localStorage.setItem("bsky-handle", e.target.value);
+                  }
+                }}
+                className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
+              />
+              <input
+                type="password"
+                placeholder="Bluesky app password"
+                value={bskyAppPassword}
+                onChange={(e) => {
+                  setBskyAppPassword(e.target.value);
+                  if (typeof window !== "undefined") {
+                    window.localStorage.setItem("bsky-app-password", e.target.value);
+                  }
+                }}
+                className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <p className="text-[11px] text-blue-700">
+              Optional: add your Bluesky handle + app password to post directly to your timeline. Stored only in your browser; clear the fields to remove.
+            </p>
+          </div>
+        </div>
+      )}
+
       <textarea
         value={text}
         onChange={handleChange}
@@ -288,7 +393,7 @@ export default function Composer({
       />
       <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
         <label className="block text-sm font-semibold text-gray-800">
-          Optional image
+          Optional image (png or jpg):
         </label>
         <div className="flex items-center gap-3">
           <button
@@ -305,13 +410,23 @@ export default function Composer({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/png,image/jpeg"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (!file) {
               setImageData(null);
               setImageName(null);
+              return;
+            }
+            const allowedTypes = ["image/png", "image/jpeg"];
+            const mime = (file.type || "").toLowerCase();
+            const ext = file.name.split(".").pop()?.toLowerCase() || "";
+            const extAllowed = ["png", "jpg", "jpeg"].includes(ext);
+            if (!allowedTypes.includes(mime) || !extAllowed) {
+              setFlashMessage("Only PNG or JPG images are allowed.");
+              setTimeout(() => setFlashMessage(null), 4000);
+              e.target.value = "";
               return;
             }
             setImageName(file.name);
@@ -331,7 +446,13 @@ export default function Composer({
             />
             <button
               type="button"
-              onClick={() => setImageData(null)}
+              onClick={() => {
+                setImageData(null);
+                setImageName(null);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = "";
+                }
+              }}
               className="ml-2 text-xs font-semibold text-red-600 underline"
             >
               Remove image
@@ -339,7 +460,7 @@ export default function Composer({
           </div>
         )}
         <p className="text-[11px] text-gray-500">
-          Images are never uploaded; they remain in your local notes only.
+          Images stay on this device and are never uploaded to Supabase. If you post to Bluesky, the image is sent along with the text but only the text message is synced to Supabase.
         </p>
       </div>
 
@@ -352,20 +473,36 @@ export default function Composer({
           {text.length}/{MAX_CHARACTERS}
         </span>
 
-        <button
-          onClick={saveNote}
-          disabled={text.length === 0 || loading}
-          className={`px-4 py-2 rounded-md text-white transition ${
-            text.length === 0 || loading
-              ? "bg-blue-400 cursor-not-allowed opacity-50"
-              : "bg-blue-600 hover:bg-blue-700"
-          }`}
-        >
-          {loading ? "Saving..." : "Save note"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={postToBluesky}
+            disabled={text.length === 0 || posting}
+            className={`px-3 py-2 rounded-md text-white transition ${
+              text.length === 0 || posting
+                ? "bg-sky-400 cursor-not-allowed opacity-60"
+                : "bg-sky-600 hover:bg-sky-700"
+            }`}
+          >
+            {posting ? "Posting…" : "Post to Bluesky"}
+          </button>
+          <button
+            onClick={saveNote}
+            disabled={text.length === 0 || loading}
+            className={`px-4 py-2 rounded-md text-white transition ${
+              text.length === 0 || loading
+                ? "bg-blue-400 cursor-not-allowed opacity-50"
+                : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {loading ? "Saving..." : "Save note"}
+          </button>
+        </div>
       </div>
 
-      
+      {postMessage && (
+        <div className="mt-2 text-sm text-blue-700">{postMessage}</div>
+      )}
+
     </div>
   );
 }

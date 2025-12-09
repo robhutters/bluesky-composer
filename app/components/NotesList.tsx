@@ -12,9 +12,25 @@ type NotesListProps = {
   onAddTag: (id: string | number, tag: string) => void;
   onRemoveTag: (id: string | number, tag: string) => void;
   canOrganize: boolean;
+  allowThreadSelect?: boolean;
+  selectedForThread?: Set<string | number>;
+  onToggleThreadSelect?: (id: string | number) => void;
 };
 
-export default function NotesList({ notes, onDelete, onReorder, onMoveRelative, metadata, onTogglePin, onAddTag, onRemoveTag, canOrganize }: NotesListProps) {
+export default function NotesList({
+  notes,
+  onDelete,
+  onReorder,
+  onMoveRelative,
+  metadata,
+  onTogglePin,
+  onAddTag,
+  onRemoveTag,
+  canOrganize,
+  allowThreadSelect = false,
+  selectedForThread,
+  onToggleThreadSelect,
+}: NotesListProps) {
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
   const [tagInputs, setTagInputs] = useState<Record<string | number, string>>({});
 
@@ -66,11 +82,22 @@ export default function NotesList({ notes, onDelete, onReorder, onMoveRelative, 
                 <div className="flex items-center gap-2">
                   {meta.pinned && <span className="text-amber-600 font-semibold">★ Pinned</span>}
                   <span>{new Date(note.created_at).toLocaleString()}</span>
+                  {allowThreadSelect && (
+                    <label className="flex items-center gap-1 text-[11px] text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={selectedForThread?.has(note.id) || false}
+                        onChange={() => onToggleThreadSelect && onToggleThreadSelect(note.id)}
+                        className="h-3 w-3"
+                      />
+                      <span>Thread</span>
+                    </label>
+                  )}
                 </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onMoveRelative(note.id, "up")}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onMoveRelative(note.id, "up")}
                   className={`px-2 py-1 text-xs font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
                   disabled={!canOrganize}
                   title={canOrganize ? "Move up" : "Pro feature"}
