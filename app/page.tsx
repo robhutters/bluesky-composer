@@ -39,6 +39,9 @@ export default function MainPage() {
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showBanner, setShowBanner] = useState(false);
   const [visitorId, setVisitorId] = useState<string | null>(null);
+  const [giftCode, setGiftCode] = useState("");
+  const [giftMessage, setGiftMessage] = useState<string | null>(null);
+  const [giftLoading, setGiftLoading] = useState(false);
 
   const ensureVisitorId = () => {
     if (typeof window === "undefined") return null;
@@ -49,6 +52,48 @@ export default function MainPage() {
     }
     setVisitorId(vid);
     return vid;
+  };
+
+  const redeemGiftCode = async () => {
+    if (!user || plan === "pro") {
+      setGiftMessage("Already on PRO or not signed in.");
+      setTimeout(() => setGiftMessage(null), 3000);
+      return;
+    }
+    const code = giftCode.trim();
+    if (!code) {
+      setGiftMessage("Enter a code first.");
+      setTimeout(() => setGiftMessage(null), 2000);
+      return;
+    }
+    setGiftLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not logged in");
+      const res = await fetch("/api/redeem-code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          code,
+          clientId: visitorId || undefined,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "Failed to redeem");
+      setGiftMessage("Code redeemed! PRO unlocked.");
+      setPlan("pro");
+      setGiftCode("");
+      void fetchNotes();
+      setTimeout(() => setGiftMessage(null), 4000);
+    } catch (err: any) {
+      setGiftMessage(err?.message || "Failed to redeem");
+      setTimeout(() => setGiftMessage(null), 4000);
+    } finally {
+      setGiftLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -794,10 +839,34 @@ export default function MainPage() {
                         {row.status}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+            {user && !isPro && (
+              <div className="mt-4 flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                <input
+                  type="text"
+                  value={giftCode}
+                  onChange={(e) => setGiftCode(e.target.value)}
+                  placeholder="Have a gift code?"
+                  className="w-full sm:w-auto flex-1 rounded border px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={redeemGiftCode}
+                  disabled={giftLoading}
+                  className={`px-3 py-2 text-sm font-semibold rounded text-white shadow-sm ${
+                    giftLoading ? "bg-amber-300 cursor-wait" : "bg-amber-500 hover:bg-amber-600"
+                  }`}
+                >
+                  {giftLoading ? "Redeeming..." : "Redeem code"}
+                </button>
+                {giftMessage && (
+                  <span className="text-xs text-amber-700">{giftMessage}</span>
+                )}
+              </div>
+            )}
           </div>
           <div className="mt-6 mb-4 p-4 border rounded bg-white shadow-sm">
             <h4 className="text-base sm:text-lg font-semibold mb-2">What you get for free</h4>
