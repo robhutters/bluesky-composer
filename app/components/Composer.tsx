@@ -38,6 +38,9 @@ export default function Composer({
   const [posting, setPosting] = useState(false);
   const [postMessage, setPostMessage] = useState<string | null>(null);
   const hasBskyCreds = Boolean(bskyHandle && bskyAppPassword);
+  const [giftCode, setGiftCode] = useState("");
+  const [giftMessage, setGiftMessage] = useState<string | null>(null);
+  const [giftLoading, setGiftLoading] = useState(false);
   const clearBskyCreds = () => {
     setBskyHandle("");
     setBskyAppPassword("");
@@ -98,6 +101,46 @@ export default function Composer({
     setShowBskyForm(false);
     setPostMessage("Bluesky credentials saved.");
     setTimeout(() => setPostMessage(null), 3000);
+  };
+
+  const redeemGiftCode = async () => {
+    if (!user || isPro) {
+      setGiftMessage("Already on PRO or not signed in.");
+      setTimeout(() => setGiftMessage(null), 3000);
+      return;
+    }
+    const code = giftCode.trim();
+    if (!code) {
+      setGiftMessage("Enter a code first.");
+      setTimeout(() => setGiftMessage(null), 2000);
+      return;
+    }
+    setGiftLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not logged in");
+      const res = await fetch("/api/redeem-code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          code,
+          clientId: visitorId || undefined,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "Failed to redeem");
+      setGiftMessage("Code redeemed! PRO unlocked.");
+      setGiftCode("");
+      setTimeout(() => setGiftMessage(null), 4000);
+    } catch (err: any) {
+      setGiftMessage(err?.message || "Failed to redeem");
+      setTimeout(() => setGiftMessage(null), 4000);
+    } finally {
+      setGiftLoading(false);
+    }
   };
 
   // Persist draft locally on every change (works for signed-in and anonymous)
@@ -336,7 +379,45 @@ export default function Composer({
 
   return (
     <div className="w-full max-w-lg mx-auto mt-8 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
-      <h2 className="text-xl font-semibold mb-4">BlueSky Composer</h2>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
+        <h2 className="text-xl font-semibold">BlueSky Composer</h2>
+        {user && !isPro && (
+          <button
+            type="button"
+            onClick={startCheckout}
+            disabled={checkoutLoading}
+            className={`px-3 py-2 text-sm font-semibold rounded text-white transition shadow-sm ${
+              checkoutLoading ? "bg-blue-400 cursor-wait" : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {checkoutLoading ? "Loading..." : "Upgrade to PRO"}
+          </button>
+        )}
+      </div>
+      {user && !isPro && (
+        <div className="mb-3 flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+          <input
+            type="text"
+            value={giftCode}
+            onChange={(e) => setGiftCode(e.target.value)}
+            placeholder="Have a gift code?"
+            className="w-full sm:w-auto flex-1 rounded border px-3 py-2 text-sm"
+          />
+          <button
+            type="button"
+            onClick={redeemGiftCode}
+            disabled={giftLoading}
+            className={`px-3 py-2 text-sm font-semibold rounded text-white shadow-sm ${
+              giftLoading ? "bg-amber-300 cursor-wait" : "bg-amber-500 hover:bg-amber-600"
+            }`}
+          >
+            {giftLoading ? "Redeeming..." : "Redeem code"}
+          </button>
+          {giftMessage && (
+            <span className="text-xs text-amber-700">{giftMessage}</span>
+          )}
+        </div>
+      )}
       {flashMessage && (
         <div className="fixed top-4 right-4 z-50 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg">
           {flashMessage}
