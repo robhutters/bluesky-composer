@@ -7,6 +7,11 @@ npm run dev
 ```
 Visit http://localhost:3000.
 
+## Deploying safely
+- Use `vercel` (no `--prod`) for preview/staging deployments. Reserve `vercel --prod` for the main production branch only.
+- Scope env vars per environment in Vercel (Preview vs Production). Keep test/staging keys in Preview, live keys in Production.
+- Stripe: use test-mode keys/endpoint + test webhook secret for staging; live keys/endpoint + live webhook secret for production.
+
 ## Security & RLS
 - Notes are encrypted server-side; the encryption key lives only on the server.
 - Client calls API routes with the user’s Supabase session token; routes use the service-role key and enforce user ownership.

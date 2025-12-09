@@ -8,26 +8,35 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    setError(null);
+    setMessage(null);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) alert(error.message);
+    if (error) setError(error.message);
+    else setMessage("Signed in");
   };
 
   const handleSignup = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    setError(null);
+    setMessage(null);
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
     setLoading(false);
-    if (error) alert(error.message);
-    else alert("Check your email to confirm your account!");
+    if (error) {
+      setError(error.message);
+    } else if (data.session) {
+      setMessage("Account created and signed in.");
+    } else {
+      setMessage("Check your email to confirm your account.");
+    }
   };
 
   return (
@@ -63,6 +72,8 @@ export default function Auth() {
           {loading ? "Loading..." : "Signup"}
         </button>
       </div>
+      {message && <p className="mt-3 text-xs text-green-700">{message}</p>}
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
   );
 }
