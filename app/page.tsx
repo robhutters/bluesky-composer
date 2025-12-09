@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import { contentKey, mergeLocalAndCloud, formatNotesToMarkdown, canExportNotes } from "./lib/noteUtils";
 import Composer from "./components/Composer";
@@ -33,6 +33,7 @@ export default function MainPage() {
   const [threadSelection, setThreadSelection] = useState<Set<string | number>>(new Set());
   const [threadMessage, setThreadMessage] = useState<string | null>(null);
   const [postingThread, setPostingThread] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
@@ -170,7 +171,7 @@ export default function MainPage() {
     }
   };
 
-  const fetchNotes = async () => {
+  const fetchNotes = useCallback(async () => {
     if (!user) return;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -190,7 +191,7 @@ export default function MainPage() {
         await fetchMetadata();
       }
     }
-  };
+  }, [isPro, user]);
 
   const fetchMetadata = async () => {
     if (!user || !isPro) return;
@@ -252,7 +253,24 @@ export default function MainPage() {
     });
 
     if (res.ok) {
-      setNotes((prev: any) => prev.filter((note: any) => note.id !== id));
+      setNotes((prev: any) => {
+        const next = prev.filter((note: any) => note.id !== id);
+        // also clear from local cache so mergeLocalAndCloud doesn't resurrect it
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+        }
+        return next;
+      });
+      setMetadata((prev) => {
+        const next = { ...prev };
+        delete next[String(id)];
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(next));
+        }
+        return next;
+      });
+      setDeleteMessage("Note deleted");
+      setTimeout(() => setDeleteMessage(null), 2500);
     } else {
       console.error("Failed to delete note");
     }
@@ -510,6 +528,35 @@ export default function MainPage() {
     }
   };
 
+  // Live updates: subscribe to Supabase changes for this user, plus a light polling fallback.
+  useEffect(() => {
+    if (!user || !isPro) return;
+    const channel = supabase
+      .channel(`notes-rt-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notes",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void fetchNotes();
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(() => {
+      void fetchNotes();
+    }, 15000);
+
+    return () => {
+      clearInterval(interval);
+      void channel.unsubscribe();
+    };
+  }, [fetchNotes, isPro, user]);
+
   return (
     <>
   
@@ -531,6 +578,11 @@ export default function MainPage() {
         {exportMessage && (
           <div className="mb-4 rounded border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 shadow-sm">
             {exportMessage}
+          </div>
+        )}
+        {deleteMessage && (
+          <div className="mb-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 shadow-sm">
+            {deleteMessage}
           </div>
         )}
         <Image
