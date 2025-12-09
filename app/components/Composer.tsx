@@ -39,7 +39,6 @@ export default function Composer({
   const [postMessage, setPostMessage] = useState<string | null>(null);
   const hasBskyCreds = Boolean(bskyHandle && bskyAppPassword);
   const [giftCode, setGiftCode] = useState("");
-  const [giftMessage, setGiftMessage] = useState<string | null>(null);
   const [giftLoading, setGiftLoading] = useState(false);
   const clearBskyCreds = () => {
     setBskyHandle("");
@@ -105,14 +104,14 @@ export default function Composer({
 
   const redeemGiftCode = async () => {
     if (!user || isPro) {
-      setGiftMessage("Already on PRO or not signed in.");
-      setTimeout(() => setGiftMessage(null), 3000);
+      setFlashMessage("Already on PRO or not signed in.");
+      setTimeout(() => setFlashMessage(null), 3000);
       return;
     }
     const code = giftCode.trim();
     if (!code) {
-      setGiftMessage("Enter a code first.");
-      setTimeout(() => setGiftMessage(null), 2000);
+      setFlashMessage("Enter a code first.");
+      setTimeout(() => setFlashMessage(null), 2000);
       return;
     }
     setGiftLoading(true);
@@ -132,12 +131,12 @@ export default function Composer({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "Failed to redeem");
-      setGiftMessage("Code redeemed! PRO unlocked.");
+      setFlashMessage("Code redeemed! PRO unlocked.");
       setGiftCode("");
-      setTimeout(() => setGiftMessage(null), 4000);
+      setTimeout(() => setFlashMessage(null), 4000);
     } catch (err: any) {
-      setGiftMessage(err?.message || "Failed to redeem");
-      setTimeout(() => setGiftMessage(null), 4000);
+      setFlashMessage(err?.message || "Failed to redeem");
+      setTimeout(() => setFlashMessage(null), 4000);
     } finally {
       setGiftLoading(false);
     }
@@ -413,9 +412,6 @@ export default function Composer({
           >
             {giftLoading ? "Redeeming..." : "Redeem code"}
           </button>
-          {giftMessage && (
-            <span className="text-xs text-amber-700">{giftMessage}</span>
-          )}
         </div>
       )}
       {flashMessage && (

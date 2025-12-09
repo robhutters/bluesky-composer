@@ -37,6 +37,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid code" }, { status: 400 });
     }
     try {
+      // Prevent reuse: look for existing redemption of this code
+      const { data: existing } = await supabase
+        .from("composer_saves")
+        .select("id")
+        .eq("kind", `pro_purchase_gift:${giftCode}`)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        return NextResponse.json({ error: "Code already redeemed" }, { status: 400 });
+      }
+
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert({ id: user.id, email: user.email, plan: "pro" }, { onConflict: "id" });
@@ -44,7 +54,11 @@ export async function POST(req: Request) {
       if (body?.clientId) {
         await supabase
           .from("composer_saves")
-          .insert({ client_id: body.clientId, kind: "pro_purchase_gift" });
+          .insert({ client_id: body.clientId, kind: `pro_purchase_gift:${giftCode}` });
+      } else {
+        await supabase
+          .from("composer_saves")
+          .insert({ client_id: null, kind: `pro_purchase_gift:${giftCode}` });
       }
       return NextResponse.json({ success: true, redeemed: true });
     } catch (err: any) {
