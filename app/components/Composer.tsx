@@ -119,14 +119,14 @@ export default function Composer({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
-      const res = await fetch("/api/redeem-code", {
+      const res = await fetch("/api/checkout/pro", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          code,
+          giftCode: code,
           clientId: visitorId || undefined,
         }),
       });
