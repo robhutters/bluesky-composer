@@ -575,6 +575,7 @@ export default function MainPage() {
 
 
       <main className="w-full max-w-[800px] flex-col flex justify-center">
+        {/* Inline messages (upgrade/sync) */}
         {upgradeMessage && (
           <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm">
             {upgradeMessage}
@@ -585,14 +586,28 @@ export default function MainPage() {
             {syncMessage}
           </div>
         )}
-        {exportMessage && (
-          <div className="mb-4 rounded border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800 shadow-sm">
-            {exportMessage}
-          </div>
-        )}
-        {deleteMessage && (
-          <div className="fixed top-4 right-4 z-50 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 shadow-lg">
-            {deleteMessage}
+        {(threadMessage || exportMessage || deleteMessage) && (
+          <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+            {[threadMessage, exportMessage, deleteMessage]
+              .filter(Boolean)
+              .map((msg, idx) => {
+                const text = String(msg);
+                const isError =
+                  text.toLowerCase().includes("fail") ||
+                  text.toLowerCase().includes("error");
+                return (
+                  <div
+                    key={`${text}-${idx}`}
+                    className={`rounded border px-4 py-3 text-sm shadow-lg ${
+                      isError
+                        ? "border-rose-200 bg-rose-50 text-rose-800"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    }`}
+                  >
+                    {text}
+                  </div>
+                );
+              })}
           </div>
         )}
         <Image
@@ -639,33 +654,6 @@ export default function MainPage() {
 
       {user && isPro && (
         <div className="mt-4 w-full flex flex-col gap-2 sm:flex-row sm:justify-end">
-          {(threadMessage || exportMessage) && (
-            <div className="flex-1 rounded border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm">
-              <div className="font-semibold text-gray-800 mb-2">Messages</div>
-              {threadMessage && (
-                <div
-                  className={`mb-1 ${
-                    threadMessage.toLowerCase().includes("fail") || threadMessage.toLowerCase().includes("error")
-                      ? "text-red-700"
-                      : "text-emerald-700"
-                  }`}
-                >
-                  {threadMessage}
-                </div>
-              )}
-              {exportMessage && (
-                <div
-                  className={`${
-                    exportMessage.toLowerCase().includes("fail") || exportMessage.toLowerCase().includes("error")
-                      ? "text-red-700"
-                      : "text-emerald-700"
-                  }`}
-                >
-                  {exportMessage}
-                </div>
-              )}
-            </div>
-          )}
           <button
             onClick={() => exportCloudNotes("json")}
             disabled={exporting}
@@ -686,6 +674,28 @@ export default function MainPage() {
             className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"}`}
           >
             {postingThread ? "Posting thread..." : "Post selected as thread"}
+          </button>
+          <button
+            onClick={() => {
+              const selectedNotes = sortedNotes.filter((n) => threadSelection.has(n.id));
+              const text = selectedNotes.map((n) => n.plaintext || "").join("\n\n---\n\n");
+              if (!text.trim()) {
+                setThreadMessage("Select at least one note to copy.");
+                setTimeout(() => setThreadMessage(null), 3000);
+                return;
+              }
+              void navigator.clipboard.writeText(text).then(() => {
+                setThreadMessage("Copied selected notes for thread.");
+                setTimeout(() => setThreadMessage(null), 3000);
+              }).catch(() => {
+                setThreadMessage("Failed to copy notes.");
+                setTimeout(() => setThreadMessage(null), 3000);
+              });
+            }}
+            className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto bg-slate-600 hover:bg-slate-700`}
+            disabled={threadSelection.size === 0}
+          >
+            Copy selected (thread)
           </button>
         </div>
       )}
