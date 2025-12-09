@@ -386,7 +386,7 @@ export default function Composer({
             type="button"
             onClick={startCheckout}
             disabled={checkoutLoading}
-            className={`px-3 py-2 text-sm font-semibold rounded text-white transition shadow-sm ${
+            className={`px-3 py-1 text-xs font-semibold rounded text-white transition shadow-sm ${
               checkoutLoading ? "bg-blue-400 cursor-wait" : "bg-blue-600 hover:bg-blue-700"
             }`}
           >
@@ -457,18 +457,6 @@ export default function Composer({
             </button>
           </div>
         )}
-        {!isPro && user ? (
-          <button
-            type="button"
-            onClick={startCheckout}
-            disabled={checkoutLoading}
-            className={`px-3 py-1 text-xs font-semibold rounded text-white transition shadow-sm ${
-              checkoutLoading ? "bg-blue-400 cursor-wait" : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {checkoutLoading ? "Loading..." : "Upgrade to Pro"}
-          </button>
-        ) : null}
       </div>
 
       <label className="block text-sm font-medium text-gray-700 mb-1">
