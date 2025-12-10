@@ -36,6 +36,7 @@ export default function MainPage() {
   const [threadMessage, setThreadMessage] = useState<string | null>(null);
   const [postingThread, setPostingThread] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+  const [editMessage, setEditMessage] = useState<string | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showBanner, setShowBanner] = useState(false);
   const [visitorId, setVisitorId] = useState<string | null>(null);
@@ -317,6 +318,70 @@ export default function MainPage() {
     } else {
       console.error("Failed to delete note");
     }
+  };
+
+  const updateNoteContent = async (id: string | number, newText: string) => {
+    const safe = newText.trim();
+    if (!safe) {
+      setEditMessage("Note cannot be empty");
+      setTimeout(() => setEditMessage(null), 2500);
+      return;
+    }
+
+    // Local-only flow
+    if (!user || !isPro) {
+      setNotes((prev: any[]) => {
+        const next = prev.map((n) =>
+          String(n.id) === String(id) ? { ...n, plaintext: safe } : n
+        );
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+        }
+        return next;
+      });
+      setEditMessage("Note updated locally");
+      setTimeout(() => setEditMessage(null), 2500);
+      return;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setEditMessage("Not logged in");
+      setTimeout(() => setEditMessage(null), 2500);
+      return;
+    }
+
+    const res = await fetch("/api/updateNote", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ id, content: safe }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setEditMessage(body?.error || "Failed to update note");
+      setTimeout(() => setEditMessage(null), 3000);
+      return;
+    }
+
+    setNotes((prev: any[]) => {
+      const next = prev.map((n: any) =>
+        String(n.id) === String(id) ? { ...n, plaintext: safe } : n
+      );
+      // keep localStorage in sync to avoid mergeLocalAndCloud resurrecting old text
+      if (typeof window !== "undefined") {
+        const stored = getLocalNotes();
+        const updatedStored = stored.map((n) =>
+          String(n.id) === String(id) ? { ...n, plaintext: safe } : n
+        );
+        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(updatedStored));
+      }
+      return next;
+    });
+    setEditMessage("Note updated");
+    setTimeout(() => setEditMessage(null), 2000);
   };
 
   const reorderNotes = (fromId: string | number, toId: string | number) => {
@@ -633,9 +698,9 @@ export default function MainPage() {
             </button>
           </div>
         )}
-        {(threadMessage || exportMessage || deleteMessage) && (
+        {(threadMessage || exportMessage || deleteMessage || editMessage) && (
           <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
-            {[threadMessage, exportMessage, deleteMessage]
+            {[threadMessage, exportMessage, deleteMessage, editMessage]
               .filter(Boolean)
               .map((msg, idx) => {
                 const text = String(msg);
@@ -689,6 +754,7 @@ export default function MainPage() {
         onDelete={deleteNote}
         onReorder={reorderNotes}
         onMoveRelative={moveRelative}
+        onUpdate={updateNoteContent}
         metadata={metadata}
         onTogglePin={togglePin}
         onAddTag={addTag}

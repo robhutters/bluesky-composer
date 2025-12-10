@@ -6,6 +6,7 @@ const MAX_CHARACTERS = 300;
 const LOCAL_DRAFT_KEY = "bsky-composer-draft";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const ACTIVITY_PING_INTERVAL_MS = 30000;
+const EMOJIS = ["😀", "😅", "🥳", "🥹", "😄", "😋", "😂", "🤣", "🥲", "☺️", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😙", "😝", "😜", "🤨", "🧐", "🤓", "😎", "🤩", "😏", "😒", "😞", "😔", "😟", "😕", "😭", "🙁", "🥺", "😫", "😤", "😠", "😡", "🤬", "🥵", "😳", "🔥", "✨", "👍", "💡", "📌", "🧠", "🍕", "☕️", "✅", "💬", "🎮", "🕹️", "🧭"];
 
 export default function Composer({
   onNoteSaved,
@@ -40,6 +41,8 @@ export default function Composer({
   const hasBskyCreds = Boolean(bskyHandle && bskyAppPassword);
   const [giftCode, setGiftCode] = useState("");
   const [giftLoading, setGiftLoading] = useState(false);
+  const [showEmojis, setShowEmojis] = useState(false);
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const clearBskyCreds = () => {
     setBskyHandle("");
     setBskyAppPassword("");
@@ -102,46 +105,6 @@ export default function Composer({
     setTimeout(() => setPostMessage(null), 3000);
   };
 
-  const redeemGiftCode = async () => {
-    if (!user || isPro) {
-      setFlashMessage("Already on PRO or not signed in.");
-      setTimeout(() => setFlashMessage(null), 3000);
-      return;
-    }
-    const code = giftCode.trim();
-    if (!code) {
-      setFlashMessage("Enter a code first.");
-      setTimeout(() => setFlashMessage(null), 2000);
-      return;
-    }
-    setGiftLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not logged in");
-      const res = await fetch("/api/checkout/pro", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          giftCode: code,
-          clientId: visitorId || undefined,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || "Failed to redeem");
-      setFlashMessage("Code redeemed! PRO unlocked.");
-      setGiftCode("");
-      setTimeout(() => setFlashMessage(null), 4000);
-    } catch (err: any) {
-      setFlashMessage(err?.message || "Failed to redeem");
-      setTimeout(() => setFlashMessage(null), 4000);
-    } finally {
-      setGiftLoading(false);
-    }
-  };
-
   // Persist draft locally on every change (works for signed-in and anonymous)
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -187,6 +150,23 @@ export default function Composer({
         /* ignore */ 
       });
     }
+  };
+
+  const insertEmoji = (emoji: string) => {
+    setShowEmojis(false);
+    setText((prev) => {
+      const el = textAreaRef.current;
+      if (el) {
+        const start = el.selectionStart ?? prev.length;
+        const end = el.selectionEnd ?? prev.length;
+        const next = prev.slice(0, start) + emoji + prev.slice(end);
+        return next.slice(0, MAX_CHARACTERS);
+      }
+      const next = prev + emoji;
+      return next.slice(0, MAX_CHARACTERS);
+    });
+    // focus back on textarea
+    requestAnimationFrame(() => textAreaRef.current?.focus());
   };
 
   const autoSave = async (partialText: string) => {
@@ -292,6 +272,10 @@ export default function Composer({
       }
       setText("");
       setImageData(null);
+      setImageName(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } catch (err: any) {
       alert(`Error saving note: ${err.message ?? "Unknown error"}`);
     } finally {
@@ -378,42 +362,7 @@ export default function Composer({
 
   return (
     <div className="w-full max-w-lg mx-auto mt-8 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
-        <h2 className="text-xl font-semibold">BlueSky Composer</h2>
-        {user && !isPro && (
-          <button
-            type="button"
-            onClick={startCheckout}
-            disabled={checkoutLoading}
-            className={`px-3 py-1 text-xs font-semibold rounded text-white transition shadow-sm ${
-              checkoutLoading ? "bg-blue-400 cursor-wait" : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {checkoutLoading ? "Loading..." : "Upgrade to PRO"}
-          </button>
-        )}
-      </div>
-      {user && !isPro && (
-        <div className="mb-3 flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-          <input
-            type="text"
-            value={giftCode}
-            onChange={(e) => setGiftCode(e.target.value)}
-            placeholder="Have a gift code?"
-            className="w-full sm:w-auto flex-1 rounded border px-3 py-2 text-sm"
-          />
-          <button
-            type="button"
-            onClick={redeemGiftCode}
-            disabled={giftLoading}
-            className={`px-3 py-2 text-sm font-semibold rounded text-white shadow-sm ${
-              giftLoading ? "bg-amber-300 cursor-wait" : "bg-amber-500 hover:bg-amber-600"
-            }`}
-          >
-            {giftLoading ? "Redeeming..." : "Redeem code"}
-          </button>
-        </div>
-      )}
+      <h2 className="text-xl font-semibold mb-4">BlueSky Composer</h2>
       {flashMessage && (
         <div className="fixed top-4 right-4 z-50 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg">
           {flashMessage}
@@ -453,11 +402,20 @@ export default function Composer({
             </button>
           </div>
         )}
+        {!isPro && user ? (
+          <button
+            type="button"
+            onClick={startCheckout}
+            disabled={checkoutLoading}
+            className={`px-3 py-1 text-xs font-semibold rounded text-white transition shadow-sm ${
+              checkoutLoading ? "bg-blue-400 cursor-wait" : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {checkoutLoading ? "Loading..." : "Upgrade to Pro"}
+          </button>
+        ) : null}
       </div>
 
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
-      </label>
       {(!bskyLinked || showBskyForm) && (
         <div className="mb-3 rounded border border-blue-100 bg-blue-50/70 p-3">
           <div className="flex flex-col gap-2">
@@ -506,7 +464,37 @@ export default function Composer({
         </div>
       )}
 
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <label className="block text-sm font-medium text-gray-700">
+          Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
+        </label>
+        <button
+          type="button"
+          onClick={() => setShowEmojis((v) => !v)}
+          className="px-2 py-1 text-xs font-semibold rounded border border-gray-200 bg-white hover:bg-gray-100"
+        >
+          😊 Emoji
+        </button>
+      </div>
+      {showEmojis && (
+        <div className="mb-2 rounded border border-gray-200 bg-white p-2 shadow-sm">
+          <div className="text-xs text-gray-600 mb-1">Tap to insert:</div>
+          <div className="flex flex-wrap gap-2">
+            {EMOJIS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => insertEmoji(e)}
+                className="h-9 w-9 rounded border border-gray-200 bg-gray-50 text-lg hover:bg-gray-100"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <textarea
+        ref={textAreaRef}
         value={text}
         onChange={handleChange}
         placeholder="What's on your mind?"
@@ -559,7 +547,7 @@ export default function Composer({
           }}
         />
         {imageData && (
-          <div className="mt-2">
+          <div className="mt-2 relative inline-block">
             <img
               src={imageData}
               alt="Selected"
@@ -574,9 +562,10 @@ export default function Composer({
                   fileInputRef.current.value = "";
                 }
               }}
-              className="ml-2 text-xs font-semibold text-red-600 underline"
+              className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-white border border-red-200 text-red-600 text-xs font-bold shadow hover:bg-red-50"
+              aria-label="Remove image"
             >
-              Remove image
+              ×
             </button>
           </div>
         )}
