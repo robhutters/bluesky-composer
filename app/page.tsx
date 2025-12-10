@@ -14,6 +14,7 @@ const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const BANNER_SEEN_KEY = "bsky-composer-banner-seen";
+const LOCAL_IMAGE_MAP_KEY = "bsky-composer-note-images";
 const MAX_CHARACTERS = 300;
 
 type NoteMeta = {
@@ -114,6 +115,34 @@ export default function MainPage() {
     return [];
   };
 
+  const getLocalImages = (): Record<string, string> => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.localStorage.getItem(LOCAL_IMAGE_MAP_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const saveImageForContent = (plaintext: string, imageData?: string | null) => {
+    if (!imageData || typeof window === "undefined") return;
+    const map = getLocalImages();
+    map[contentKey(plaintext)] = imageData;
+    window.localStorage.setItem(LOCAL_IMAGE_MAP_KEY, JSON.stringify(map));
+  };
+
+  const removeImageForContent = (plaintext?: string) => {
+    if (!plaintext || typeof window === "undefined") return;
+    const map = getLocalImages();
+    const key = contentKey(plaintext);
+    if (map[key]) {
+      delete map[key];
+      window.localStorage.setItem(LOCAL_IMAGE_MAP_KEY, JSON.stringify(map));
+    }
+  };
+
   const loadLocalNotes = () => {
     const local = getLocalNotes();
     setNotes(local);
@@ -151,6 +180,9 @@ export default function MainPage() {
       }
       return next;
     });
+    if (imageData) {
+      saveImageForContent(content, imageData);
+    }
   };
 
   const fetchPlanAndNotes = async () => {
@@ -232,7 +264,13 @@ export default function MainPage() {
         const filteredCloud = (data || []).filter(
           (note: any) => !deletedIds.has(String(note.id))
         );
-        setNotes(filteredCloud);
+        // Re-attach any locally stored images (cloud never stores them).
+        const images = getLocalImages();
+        const withImages = filteredCloud.map((note: any) => {
+          const img = images[contentKey(note.plaintext)];
+          return img ? { ...note, imageData: img } : note;
+        });
+        setNotes(withImages);
 
         // Push any lingering local notes, then clear the local cache so edits don't resurrect old copies.
         if (local.length) {
@@ -281,6 +319,8 @@ export default function MainPage() {
   const deleteNote = async (id: string | number) => {
     if (!user || !isPro) {
       setNotes((prev: any[]) => {
+        const target = prev.find((n) => String(n.id) === String(id));
+        if (target?.plaintext) removeImageForContent(target.plaintext);
         const next = prev.filter((note) => note.id !== id);
         if (typeof window !== "undefined") {
           window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
@@ -317,6 +357,8 @@ export default function MainPage() {
         return next;
       });
       setNotes((prev: any) => {
+        const target = prev.find((n: any) => String(n.id) === String(id));
+        if (target?.plaintext) removeImageForContent(target.plaintext);
         const next = prev.filter((note: any) => note.id !== id);
         // also clear from local cache so mergeLocalAndCloud doesn't resurrect it
         if (typeof window !== "undefined") {
