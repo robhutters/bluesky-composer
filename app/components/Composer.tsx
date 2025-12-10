@@ -6,6 +6,7 @@ const MAX_CHARACTERS = 300;
 const LOCAL_DRAFT_KEY = "bsky-composer-draft";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const ACTIVITY_PING_INTERVAL_MS = 30000;
+const EMOJIS = ["😀", "😅", "🥳", "🔥", "✨", "👍", "💡", "📌", "🧠", "🍕", "☕️", "✅", "💬", "🎮", "🕹️", "🧭", "⏩"];
 
 export default function Composer({
   onNoteSaved,
@@ -38,6 +39,10 @@ export default function Composer({
   const [posting, setPosting] = useState(false);
   const [postMessage, setPostMessage] = useState<string | null>(null);
   const hasBskyCreds = Boolean(bskyHandle && bskyAppPassword);
+  const [giftCode, setGiftCode] = useState("");
+  const [giftLoading, setGiftLoading] = useState(false);
+  const [showEmojis, setShowEmojis] = useState(false);
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const clearBskyCreds = () => {
     setBskyHandle("");
     setBskyAppPassword("");
@@ -147,6 +152,23 @@ export default function Composer({
     }
   };
 
+  const insertEmoji = (emoji: string) => {
+    setShowEmojis(false);
+    setText((prev) => {
+      const el = textAreaRef.current;
+      if (el) {
+        const start = el.selectionStart ?? prev.length;
+        const end = el.selectionEnd ?? prev.length;
+        const next = prev.slice(0, start) + emoji + prev.slice(end);
+        return next.slice(0, MAX_CHARACTERS);
+      }
+      const next = prev + emoji;
+      return next.slice(0, MAX_CHARACTERS);
+    });
+    // focus back on textarea
+    requestAnimationFrame(() => textAreaRef.current?.focus());
+  };
+
   const autoSave = async (partialText: string) => {
     if (!partialText) return;
     const safe = sanitizePlainText(partialText);
@@ -250,6 +272,10 @@ export default function Composer({
       }
       setText("");
       setImageData(null);
+      setImageName(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } catch (err: any) {
       alert(`Error saving note: ${err.message ?? "Unknown error"}`);
     } finally {
@@ -390,9 +416,6 @@ export default function Composer({
         ) : null}
       </div>
 
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
-      </label>
       {(!bskyLinked || showBskyForm) && (
         <div className="mb-3 rounded border border-blue-100 bg-blue-50/70 p-3">
           <div className="flex flex-col gap-2">
@@ -441,7 +464,37 @@ export default function Composer({
         </div>
       )}
 
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <label className="block text-sm font-medium text-gray-700">
+          Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
+        </label>
+        <button
+          type="button"
+          onClick={() => setShowEmojis((v) => !v)}
+          className="px-2 py-1 text-xs font-semibold rounded border border-gray-200 bg-white hover:bg-gray-100"
+        >
+          😊 Emoji
+        </button>
+      </div>
+      {showEmojis && (
+        <div className="mb-2 rounded border border-gray-200 bg-white p-2 shadow-sm">
+          <div className="text-xs text-gray-600 mb-1">Tap to insert:</div>
+          <div className="flex flex-wrap gap-2">
+            {EMOJIS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => insertEmoji(e)}
+                className="h-9 w-9 rounded border border-gray-200 bg-gray-50 text-lg hover:bg-gray-100"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <textarea
+        ref={textAreaRef}
         value={text}
         onChange={handleChange}
         placeholder="What's on your mind?"
@@ -494,7 +547,7 @@ export default function Composer({
           }}
         />
         {imageData && (
-          <div className="mt-2">
+          <div className="mt-2 relative inline-block">
             <img
               src={imageData}
               alt="Selected"
@@ -509,9 +562,10 @@ export default function Composer({
                   fileInputRef.current.value = "";
                 }
               }}
-              className="ml-2 text-xs font-semibold text-red-600 underline"
+              className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-white border border-red-200 text-red-600 text-xs font-bold shadow hover:bg-red-50"
+              aria-label="Remove image"
             >
-              Remove image
+              ×
             </button>
           </div>
         )}

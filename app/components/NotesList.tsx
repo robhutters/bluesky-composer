@@ -7,6 +7,7 @@ type NotesListProps = {
   onDelete: (id: string | number) => void;
   onReorder: (fromId: string | number, toId: string | number) => void;
   onMoveRelative: (id: string | number, direction: "up" | "down") => void;
+  onUpdate: (id: string | number, text: string) => Promise<void> | void;
   metadata: Record<string, { pinned: boolean; tags: string[] }>;
   onTogglePin: (id: string | number) => void;
   onAddTag: (id: string | number, tag: string) => void;
@@ -23,6 +24,7 @@ export default function NotesList({
   onDelete,
   onReorder,
   onMoveRelative,
+  onUpdate,
   metadata,
   onTogglePin,
   onAddTag,
@@ -35,6 +37,12 @@ export default function NotesList({
 }: NotesListProps) {
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
   const [tagInputs, setTagInputs] = useState<Record<string | number, string>>({});
+  const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [editingText, setEditingText] = useState<string>("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [editingText, setEditingText] = useState<string>("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const handleCopy = async (id: string | number, text: string) => {
     try {
@@ -133,6 +141,16 @@ export default function NotesList({
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    setEditingId(note.id);
+                    setEditingText(note.plaintext || "");
+                  }}
+                  className="text-[11px] font-semibold text-green-600 hover:text-green-800"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
                   onClick={() => onDelete(note.id)}
                   className="text-[11px] font-semibold text-red-600 hover:text-red-800"
                 >
@@ -140,9 +158,50 @@ export default function NotesList({
                 </button>
               </div>
               </div>
-              <p className="text-sm text-gray-800 whitespace-pre-wrap wrap-break-word">
-                {note.plaintext}
-              </p>
+              {editingId === note.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editingText}
+                    onChange={(e) => setEditingText(e.target.value)}
+                    className="w-full min-h-[80px] text-sm border rounded p-2"
+                  />
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSavingEdit(true);
+                        try {
+                          await onUpdate(note.id, editingText);
+                          setEditingId(null);
+                          setEditingText("");
+                        } finally {
+                          setSavingEdit(false);
+                        }
+                      }}
+                      className={`px-3 py-1 rounded text-white font-semibold ${
+                        savingEdit ? "bg-green-400 cursor-wait" : "bg-green-600 hover:bg-green-700"
+                      }`}
+                      disabled={savingEdit}
+                    >
+                      {savingEdit ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(null);
+                        setEditingText("");
+                      }}
+                      className="px-3 py-1 rounded border text-gray-700 hover:bg-gray-100"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+                  {note.plaintext}
+                </p>
+              )}
               {note.imageData && (
                 <div className="mt-2">
                   <img
