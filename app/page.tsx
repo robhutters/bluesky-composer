@@ -379,20 +379,8 @@ export default function MainPage() {
       return;
     }
 
-    setNotes((prev: any[]) => {
-      const next = prev.map((n: any) =>
-        String(n.id) === String(id) ? { ...n, plaintext: safe } : n
-      );
-      // keep localStorage in sync to avoid mergeLocalAndCloud resurrecting old text
-      if (typeof window !== "undefined") {
-        const stored = getLocalNotes();
-        const updatedStored = stored.map((n) =>
-          String(n.id) === String(id) ? { ...n, plaintext: safe } : n
-        );
-        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(updatedStored));
-      }
-      return next;
-    });
+    // Refresh from server to avoid any local/cloud merge duplications
+    await fetchNotes();
     setEditMessage("Note updated");
     setTimeout(() => setEditMessage(null), 2000);
   };
