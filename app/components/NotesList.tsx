@@ -61,23 +61,24 @@ export default function NotesList({
       <ul className="space-y-3">
         {notes.map((note, index) => {
           const meta = metadata[String(note.id)] || { pinned: false, tags: [] };
+          const isPinned = meta.pinned;
           return (
             <li
               key={note.id}
             className={`p-4 border rounded bg-white ${canOrganize ? "" : "select-none"}`}
-            draggable={canOrganize}
+            draggable={canOrganize && !isPinned}
             onDragStart={(e) => {
-              if (!canOrganize) return;
+              if (!canOrganize || isPinned) return;
               e.dataTransfer.setData("text/plain", String(note.id));
               e.dataTransfer.effectAllowed = "move";
             }}
             onDragOver={(e) => {
-              if (!canOrganize) return;
+              if (!canOrganize || isPinned) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
             }}
             onDrop={(e) => {
-              if (!canOrganize) return;
+              if (!canOrganize || isPinned) return;
               e.preventDefault();
               const fromId = e.dataTransfer.getData("text/plain");
               if (fromId) {
@@ -106,18 +107,22 @@ export default function NotesList({
                   <button
                     type="button"
                     onClick={() => onMoveRelative(note.id, "up")}
-                  className={`px-2 py-1 text-[11px] font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
-                  disabled={!canOrganize}
-                  title={canOrganize ? "Move up" : "Pro feature"}
+                  className={`px-2 py-1 text-[11px] font-semibold rounded ${
+                    canOrganize && !isPinned ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"
+                  }`}
+                  disabled={!canOrganize || isPinned}
+                  title={canOrganize ? (isPinned ? "Unpin to reorder" : "Move up") : "Pro feature"}
                 >
                   ↑ Up
                 </button>
                 <button
                   type="button"
                   onClick={() => onMoveRelative(note.id, "down")}
-                  className={`px-2 py-1 text-[11px] font-semibold rounded ${canOrganize ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
-                  disabled={!canOrganize}
-                  title={canOrganize ? "Move down" : "Pro feature"}
+                  className={`px-2 py-1 text-[11px] font-semibold rounded ${
+                    canOrganize && !isPinned ? "text-gray-800 bg-gray-100 hover:bg-gray-200" : "text-gray-400 bg-gray-100 cursor-not-allowed"
+                  }`}
+                  disabled={!canOrganize || isPinned}
+                  title={canOrganize ? (isPinned ? "Unpin to reorder" : "Move down") : "Pro feature"}
                 >
                   ↓ Down
                 </button>

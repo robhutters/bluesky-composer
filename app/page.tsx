@@ -43,6 +43,7 @@ export default function MainPage() {
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showBanner, setShowBanner] = useState(false);
   const [visitorId, setVisitorId] = useState<string | null>(null);
+  const [pinInfo, setPinInfo] = useState<string | null>(null);
 
   const ensureVisitorId = () => {
     if (typeof window === "undefined") return null;
@@ -535,9 +536,15 @@ export default function MainPage() {
         saveLocalOrder(sorted.map((n) => n.id));
         return sorted;
       });
+      setPinInfo(updated.pinned ? "Pinned note stays at the top. Unpin to reorder it." : null);
       return next;
     });
-    void persistMetadata(id);
+    void persistMetadata(id, {
+      noteId: id,
+      pinned: !(metadata[String(id)]?.pinned ?? false),
+      tags: metadata[String(id)]?.tags || [],
+      versions: metadata[String(id)]?.versions || [],
+    });
   };
 
   const addTag = (id: string | number, tag: string) => {
@@ -554,7 +561,9 @@ export default function MainPage() {
       }
       return next;
     });
-    void persistMetadata(id);
+    const current = metadata[String(id)] || { noteId: id, pinned: false, tags: [], versions: [] };
+    const updated = { ...current, tags: current.tags.includes(trimmed) ? current.tags : [...current.tags, trimmed] };
+    void persistMetadata(id, updated);
   };
 
   const removeTag = (id: string | number, tag: string) => {
@@ -569,12 +578,16 @@ export default function MainPage() {
       }
       return next;
     });
-    void persistMetadata(id);
+    const current = metadata[String(id)];
+    if (current) {
+      const updated = { ...current, tags: current.tags.filter((t) => t !== tag) };
+      void persistMetadata(id, updated);
+    }
   };
 
-  const persistMetadata = async (id: string | number) => {
+  const persistMetadata = async (id: string | number, metaOverride?: NoteMeta) => {
     if (!user || !isPro) return;
-    const meta = metadata[String(id)];
+    const meta = metaOverride ?? metadata[String(id)];
     if (!meta) return;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -638,6 +651,11 @@ export default function MainPage() {
     saveLocalOrder(sorted.map((n) => n.id));
     return sorted;
   }, [notes, metadata]);
+
+  const pinnedCount = useMemo(
+    () => sortedNotes.filter((n) => metadata[String(n.id)]?.pinned).length,
+    [sortedNotes, metadata]
+  );
 
   const postThreadToBluesky = async () => {
     if (!threadSelection.size) {
@@ -850,7 +868,12 @@ export default function MainPage() {
         isPro={plan === "pro"}
         proCheckoutUrl={process.env.NEXT_PUBLIC_PRO_CHECKOUT_URL || ""}
       />
-    
+      {pinnedCount > 0 && (
+        <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {pinInfo || "Pinned notes stay at the top. Unpin to reorder them. Dragging is only available for unpinned notes."}
+        </div>
+      )}
+
       <NotesList
         notes={sortedNotes}
         onDelete={deleteNote}
