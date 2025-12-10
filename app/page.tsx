@@ -964,7 +964,7 @@ export default function MainPage() {
             disabled={postingThread || threadSelection.size === 0}
             className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"}`}
           >
-            {postingThread ? "Posting thread..." : "Post selected as thread"}
+            {postingThread ? "Posting to BlueSky..." : "Post selected to BlueSky"}
           </button>
           <button
             onClick={() => {
