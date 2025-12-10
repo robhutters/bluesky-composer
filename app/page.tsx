@@ -185,6 +185,14 @@ export default function MainPage() {
     }
   };
 
+  const attachImages = (arr: any[]) => {
+    const images = getLocalImages();
+    return (arr || []).map((note: any) => {
+      const img = images[contentKey(note.plaintext)];
+      return img ? { ...note, imageData: img } : note;
+    });
+  };
+
   const fetchPlanAndNotes = async () => {
     if (!user) return;
     const { data: { session } } = await supabase.auth.getSession();
@@ -264,13 +272,7 @@ export default function MainPage() {
         const filteredCloud = (data || []).filter(
           (note: any) => !deletedIds.has(String(note.id))
         );
-        // Re-attach any locally stored images (cloud never stores them).
-        const images = getLocalImages();
-        const withImages = filteredCloud.map((note: any) => {
-          const img = images[contentKey(note.plaintext)];
-          return img ? { ...note, imageData: img } : note;
-        });
-        setNotes(withImages);
+        setNotes(attachImages(filteredCloud));
 
         // Push any lingering local notes, then clear the local cache so edits don't resurrect old copies.
         if (local.length) {
@@ -572,8 +574,9 @@ export default function MainPage() {
     });
       if (refetch.ok) {
         const data = await refetch.json();
-        // After push, rely on cloud as the source of truth.
-        setNotes(data);
+        // After push, rely on cloud as the source of truth, but reattach local-only images.
+        const filtered = (data || []).filter((n: any) => !deletedIds.has(String(n.id)));
+        setNotes(attachImages(filtered));
         if (pushedCount > 0) {
           setSyncMessage(`Synced ${pushedCount} local note(s) to cloud`);
         setTimeout(() => setSyncMessage(null), 4000);
