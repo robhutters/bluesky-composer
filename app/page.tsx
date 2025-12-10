@@ -683,6 +683,11 @@ export default function MainPage() {
     [sortedNotes, metadata]
   );
 
+  const selectedThreadNotes = useMemo(
+    () => sortedNotes.filter((n) => threadSelection.has(n.id)),
+    [sortedNotes, threadSelection]
+  );
+
   const postThreadToBluesky = async () => {
     if (!threadSelection.size) {
       setThreadMessage("Select at least one note to post as a thread.");
@@ -918,6 +923,27 @@ export default function MainPage() {
       />
 
       {user && isPro && (
+        <>
+          {selectedThreadNotes.length > 0 && (
+            <div className="mt-4 w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
+                <span className="text-xs text-sky-700">
+                  Posts publish in this order (pinned stay first).
+                </span>
+              </div>
+              <ol className="mt-2 space-y-1 text-sm text-sky-900">
+                {selectedThreadNotes.map((n, idx) => (
+                  <li key={n.id} className="flex items-start gap-2">
+                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
+                      {idx + 1}
+                    </span>
+                    <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         <div className="mt-4 w-full flex flex-col gap-2 sm:flex-row sm:justify-end">
           <button
             onClick={() => exportCloudNotes("json")}
@@ -963,6 +989,7 @@ export default function MainPage() {
             Copy selected (thread)
           </button>
         </div>
+        </>
       )}
 
       {!user && (
