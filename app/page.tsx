@@ -15,6 +15,7 @@ const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const BANNER_SEEN_KEY = "bsky-composer-banner-seen";
 const LOCAL_IMAGE_MAP_KEY = "bsky-composer-note-images";
+const LOCAL_ORDER_KEY = "bsky-composer-note-order";
 const MAX_CHARACTERS = 300;
 
 type NoteMeta = {
@@ -115,6 +116,22 @@ export default function MainPage() {
     return [];
   };
 
+  const getLocalOrder = (): string[] => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(LOCAL_ORDER_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveLocalOrder = (ids: Array<string | number>) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LOCAL_ORDER_KEY, JSON.stringify(ids.map(String)));
+  };
+
   const getLocalImages = (): Record<string, string> => {
     if (typeof window === "undefined") return {};
     try {
@@ -178,6 +195,7 @@ export default function MainPage() {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
       }
+      saveLocalOrder(next.map((n) => n.id));
       return next;
     });
     if (imageData) {
@@ -190,6 +208,18 @@ export default function MainPage() {
     return (arr || []).map((note: any) => {
       const img = images[contentKey(note.plaintext)];
       return img ? { ...note, imageData: img } : note;
+    });
+  };
+
+  const applyOrder = (arr: any[]) => {
+    const order = getLocalOrder();
+    if (!order.length) return arr;
+    const rank = new Map<string, number>();
+    order.forEach((id, idx) => rank.set(String(id), idx));
+    return [...arr].sort((a, b) => {
+      const ra = rank.has(String(a.id)) ? rank.get(String(a.id))! : Number.MAX_SAFE_INTEGER;
+      const rb = rank.has(String(b.id)) ? rank.get(String(b.id))! : Number.MAX_SAFE_INTEGER;
+      return ra - rb;
     });
   };
 
@@ -272,13 +302,16 @@ export default function MainPage() {
         const filteredCloud = (data || []).filter(
           (note: any) => !deletedIds.has(String(note.id))
         );
-        setNotes(attachImages(filteredCloud));
+        const withImages = attachImages(filteredCloud);
+        const ordered = applyOrder(withImages);
+        setNotes(ordered);
 
         // Push any lingering local notes, then clear the local cache so edits don't resurrect old copies.
         if (local.length) {
           await syncLocalNotesToCloud(data, session.access_token);
           if (typeof window !== "undefined") {
             window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify([]));
+            window.localStorage.setItem(LOCAL_ORDER_KEY, JSON.stringify([]));
           }
         }
         await fetchMetadata();
@@ -326,6 +359,7 @@ export default function MainPage() {
         const next = prev.filter((note) => note.id !== id);
         if (typeof window !== "undefined") {
           window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+          saveLocalOrder(next.map((n) => n.id));
         }
         return next;
       });
@@ -365,6 +399,7 @@ export default function MainPage() {
         // also clear from local cache so mergeLocalAndCloud doesn't resurrect it
         if (typeof window !== "undefined") {
           window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+          saveLocalOrder(next.map((n: any) => n.id));
         }
         return next;
       });
@@ -453,6 +488,7 @@ export default function MainPage() {
       if ((!user || !isPro) && typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
       }
+      saveLocalOrder(next.map((n) => n.id));
       return next;
     });
   };
@@ -470,6 +506,7 @@ export default function MainPage() {
       if ((!user || !isPro) && typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
       }
+      saveLocalOrder(next.map((n) => n.id));
       return next;
     });
   };
@@ -493,7 +530,11 @@ export default function MainPage() {
         window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(next));
       }
       // Reorder notes with updated pin state so drag/drop uses the same view as render.
-      setNotes((prevNotes) => sortWithPins(prevNotes, next));
+      setNotes((prevNotes) => {
+        const sorted = sortWithPins(prevNotes, next);
+        saveLocalOrder(sorted.map((n) => n.id));
+        return sorted;
+      });
       return next;
     });
     void persistMetadata(id);
@@ -580,7 +621,9 @@ export default function MainPage() {
         const data = await refetch.json();
         // After push, rely on cloud as the source of truth, but reattach local-only images.
         const filtered = (data || []).filter((n: any) => !deletedIds.has(String(n.id)));
-        setNotes(attachImages(filtered));
+        const withImages = attachImages(filtered);
+        const ordered = applyOrder(withImages);
+        setNotes(ordered);
         if (pushedCount > 0) {
           setSyncMessage(`Synced ${pushedCount} local note(s) to cloud`);
         setTimeout(() => setSyncMessage(null), 4000);
@@ -590,14 +633,10 @@ export default function MainPage() {
 
   // Preserve manual order; only lift pinned items to the top while keeping relative order
   const sortedNotes = useMemo(() => {
-    const pinned: any[] = [];
-    const regular: any[] = [];
-    for (const n of notes) {
-      const isPinned = metadata[String(n.id)]?.pinned;
-      if (isPinned) pinned.push(n);
-      else regular.push(n);
-    }
-    return [...pinned, ...regular];
+    const sorted = sortWithPins(notes, metadata);
+    // keep order persisted for consistency across refreshes
+    saveLocalOrder(sorted.map((n) => n.id));
+    return sorted;
   }, [notes, metadata]);
 
   const postThreadToBluesky = async () => {
