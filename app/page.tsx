@@ -443,10 +443,11 @@ export default function MainPage() {
 
   const reorderNotes = (fromId: string | number, toId: string | number) => {
     setNotes((prev: any[]) => {
-      const fromIdx = prev.findIndex((n) => String(n.id) === String(fromId));
-      const toIdx = prev.findIndex((n) => String(n.id) === String(toId));
+      const view = sortWithPins(prev, metadata);
+      const fromIdx = view.findIndex((n) => String(n.id) === String(fromId));
+      const toIdx = view.findIndex((n) => String(n.id) === String(toId));
       if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
-      const next = [...prev];
+      const next = [...view];
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
       if ((!user || !isPro) && typeof window !== "undefined") {
@@ -458,11 +459,12 @@ export default function MainPage() {
 
   const moveRelative = (id: string | number, direction: "up" | "down") => {
     setNotes((prev: any[]) => {
-      const idx = prev.findIndex((n) => String(n.id) === String(id));
+      const view = sortWithPins(prev, metadata);
+      const idx = view.findIndex((n) => String(n.id) === String(id));
       if (idx === -1) return prev;
       const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
-      const next = [...prev];
+      if (targetIdx < 0 || targetIdx >= view.length) return prev;
+      const next = [...view];
       const [moved] = next.splice(idx, 1);
       next.splice(targetIdx, 0, moved);
       if ((!user || !isPro) && typeof window !== "undefined") {
@@ -490,6 +492,8 @@ export default function MainPage() {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(next));
       }
+      // Reorder notes with updated pin state so drag/drop uses the same view as render.
+      setNotes((prevNotes) => sortWithPins(prevNotes, next));
       return next;
     });
     void persistMetadata(id);
