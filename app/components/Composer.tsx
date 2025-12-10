@@ -6,7 +6,7 @@ const MAX_CHARACTERS = 300;
 const LOCAL_DRAFT_KEY = "bsky-composer-draft";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const ACTIVITY_PING_INTERVAL_MS = 30000;
-const EMOJIS = ["😀", "😅", "🥳", "🔥", "✨", "👍", "💡", "📌", "🧠", "🍕", "☕️", "✅", "💬", "🎮", "🕹️", "🧭", "⏩"];
+const EMOJIS = ["😀", "😅", "🥳", "🥹", "😄", "😋", "😂", "🤣", "🥲", "☺️", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😙", "😝", "😜", "🤨", "🧐", "🤓", "😎", "🤩", "😏", "😒", "😞", "😔", "😟", "😕", "😭", "🙁", "🥺", "😫", "😤", "😠", "😡", "🤬", "🥵", "😳", "🔥", "✨", "👍", "💡", "📌", "🧠", "🍕", "☕️", "✅", "💬", "🎮", "🕹️", "🧭"];
 
 export default function Composer({
   onNoteSaved,
