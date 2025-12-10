@@ -161,6 +161,7 @@ export default function NotesList({
                   <textarea
                     value={editingText}
                     onChange={(e) => setEditingText(e.target.value)}
+                    maxLength={300}
                     className="w-full min-h-[80px] text-sm border rounded p-2"
                   />
                   <div className="flex gap-2 text-xs">

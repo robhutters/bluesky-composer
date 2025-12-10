@@ -14,6 +14,7 @@ const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const BANNER_SEEN_KEY = "bsky-composer-banner-seen";
+const MAX_CHARACTERS = 300;
 
 type NoteMeta = {
   noteId: string | number;
@@ -56,9 +57,16 @@ export default function MainPage() {
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("upgrade") === "success") {
+    const upgrade = params.get("upgrade");
+    if (upgrade === "success") {
       setUpgradeMessage("Pro unlocked! Cloud sync is now available.");
       void fetchPlanAndNotes();
+    }
+    if (upgrade) {
+      params.delete("upgrade");
+      const query = params.toString();
+      const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+      window.history.replaceState({}, "", nextUrl);
     }
   }, [user]);
 
@@ -324,6 +332,11 @@ export default function MainPage() {
     const safe = newText.trim();
     if (!safe) {
       setEditMessage("Note cannot be empty");
+      setTimeout(() => setEditMessage(null), 2500);
+      return;
+    }
+    if (safe.length > MAX_CHARACTERS) {
+      setEditMessage(`Notes are limited to ${MAX_CHARACTERS} characters`);
       setTimeout(() => setEditMessage(null), 2500);
       return;
     }

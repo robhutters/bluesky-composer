@@ -370,9 +370,14 @@ export default function Composer({
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {user ? (
-          <span className={`px-2 py-1 text-xs rounded ${isPro ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-orange-50 text-orange-700 border border-orange-200"}`}>
-            {isPro ? "Cloud sync now available" : "Cloud sync is a Pro feature"}
-          </span>
+          <>
+            <span className={`px-2 py-1 text-xs rounded ${isPro ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-orange-50 text-orange-700 border border-orange-200"}`}>
+              {isPro ? "Cloud sync now available" : "Cloud sync is a Pro feature"}
+            </span>
+            <span className="px-2 py-1 text-[10px] font-semibold rounded bg-orange-100 text-orange-800 border border-orange-200">
+              PRO
+            </span>
+          </>
         ) : (
           <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 border border-gray-200">
             Local mode
