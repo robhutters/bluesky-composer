@@ -40,9 +40,7 @@ export default function NotesList({
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [editingText, setEditingText] = useState<string>("");
   const [savingEdit, setSavingEdit] = useState(false);
-  const [editingId, setEditingId] = useState<string | number | null>(null);
-  const [editingText, setEditingText] = useState<string>("");
-  const [savingEdit, setSavingEdit] = useState(false);
+ 
 
   const handleCopy = async (id: string | number, text: string) => {
     try {
@@ -156,7 +154,7 @@ export default function NotesList({
                 >
                   Delete
                 </button>
-              </div>
+                </div>
               </div>
               {editingId === note.id ? (
                 <div className="space-y-2">
@@ -212,43 +210,43 @@ export default function NotesList({
                 </div>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-2">
-              {meta.tags.map((tag) => (
-                <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => canOrganize && onRemoveTag(note.id, tag)}
-                    disabled={!canOrganize}
-                    className={`text-gray-500 ${canOrganize ? "hover:text-red-600" : "cursor-not-allowed opacity-60"}`}
-                    >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <input
-                type="text"
-                value={tagInputs[note.id] || ""}
-                onChange={(e) => setTagInputs((prev) => ({ ...prev, [note.id]: e.target.value }))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (canOrganize) {
-                      onAddTag(note.id, tagInputs[note.id] || "");
-                      setTagInputs((prev) => ({ ...prev, [note.id]: "" }));
+                {meta.tags.map((tag) => (
+                  <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => canOrganize && onRemoveTag(note.id, tag)}
+                      disabled={!canOrganize}
+                      className={`text-gray-500 ${canOrganize ? "hover:text-red-600" : "cursor-not-allowed opacity-60"}`}
+                      >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  value={tagInputs[note.id] || ""}
+                  onChange={(e) => setTagInputs((prev) => ({ ...prev, [note.id]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (canOrganize) {
+                        onAddTag(note.id, tagInputs[note.id] || "");
+                        setTagInputs((prev) => ({ ...prev, [note.id]: "" }));
+                      }
                     }
-                  }
-                }}
-                placeholder={canOrganize ? "Add tag" : "Pro feature"}
-                disabled={!canOrganize}
-                className={`text-xs border px-2 py-1 rounded ${canOrganize ? "" : "bg-gray-100 cursor-not-allowed"}`}
-              />
-            </div>
-            <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500">
-              <span>{new Date(note.created_at).toLocaleString()}</span>
-            </div>
-          </li>
-        );
-      })}
+                  }}
+                  placeholder={canOrganize ? "Add tag" : "Pro feature"}
+                  disabled={!canOrganize}
+                  className={`text-xs border px-2 py-1 rounded ${canOrganize ? "" : "bg-gray-100 cursor-not-allowed"}`}
+                />
+              </div>
+              <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500">
+                <span>{new Date(note.created_at).toLocaleString()}</span>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
