@@ -161,6 +161,18 @@ export default function MainPage() {
     }
   };
 
+  const migrateImageForEdit = (oldPlaintext: string | undefined, newPlaintext: string) => {
+    if (typeof window === "undefined" || !oldPlaintext) return;
+    const images = getLocalImages();
+    const oldKey = contentKey(oldPlaintext);
+    const newKey = contentKey(newPlaintext);
+    if (oldKey === newKey || !images[oldKey]) return;
+    const updated = { ...images };
+    updated[newKey] = images[oldKey];
+    delete updated[oldKey];
+    window.localStorage.setItem(LOCAL_IMAGE_MAP_KEY, JSON.stringify(updated));
+  };
+
   const loadLocalNotes = () => {
     const local = getLocalNotes();
     setNotes(local);
@@ -432,6 +444,7 @@ export default function MainPage() {
       setTimeout(() => setEditMessage(null), 2500);
       return;
     }
+    const existing = notes.find((n) => String(n.id) === String(id));
 
     // Local-only flow
     if (!user || !isPro) {
@@ -444,6 +457,9 @@ export default function MainPage() {
         }
         return next;
       });
+      if (existing?.plaintext) {
+        migrateImageForEdit(existing.plaintext, safe);
+      }
       setEditMessage("Note updated locally");
       setTimeout(() => setEditMessage(null), 2500);
       return;
@@ -469,6 +485,16 @@ export default function MainPage() {
       setEditMessage(body?.error || "Failed to update note");
       setTimeout(() => setEditMessage(null), 3000);
       return;
+    }
+
+    // Optimistically update local state so image stays visible until refetch.
+    setNotes((prev: any[]) =>
+      prev.map((n: any) =>
+        String(n.id) === String(id) ? { ...n, plaintext: safe } : n
+      )
+    );
+    if (existing?.plaintext) {
+      migrateImageForEdit(existing.plaintext, safe);
     }
 
     // Refresh from server to avoid any local/cloud merge duplications
