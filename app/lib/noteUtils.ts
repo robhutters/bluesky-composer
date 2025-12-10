@@ -13,26 +13,43 @@ export const contentKey = (plaintext: string) => {
 };
 
 export const mergeLocalAndCloud = (localNotes: any[], cloudNotes: any[]) => {
-  const mergedMap = new Map<string, any>();
-  // Seed with local notes first so we can preserve fields (like imageData) even after cloud notes arrive.
-  for (const note of localNotes) {
-    mergedMap.set(contentKey(note.plaintext), note);
-  }
-  // When a cloud note exists for the same plaintext, prefer the cloud record for ids/timestamps
-  // but keep any locally stored imageData.
+  // First merge by id: cloud seeds, local overrides same id (keep edited text/imageData)
+  const byId = new Map<string, any>();
   for (const note of cloudNotes) {
-    const key = contentKey(note.plaintext);
-    const existing = mergedMap.get(key);
-    if (existing) {
-      mergedMap.set(key, {
+    byId.set(String(note.id), note);
+  }
+  for (const note of localNotes) {
+    const key = String(note.id);
+    if (byId.has(key)) {
+      const existing = byId.get(key);
+      byId.set(key, {
+        ...existing,
         ...note,
-        imageData: existing.imageData ?? note.imageData ?? null,
+        imageData: note.imageData ?? existing.imageData ?? null,
       });
     } else {
-      mergedMap.set(key, note);
+      byId.set(key, note);
     }
   }
-  return Array.from(mergedMap.values());
+
+  // Then dedupe by content to avoid duplicates with different ids but identical plaintext.
+  const byContent = new Map<string, any>();
+  for (const note of byId.values()) {
+    const key = contentKey(note.plaintext);
+    if (byContent.has(key)) {
+      const existing = byContent.get(key);
+      byContent.set(key, {
+        ...existing,
+        ...note,
+        id: existing.id, // keep authoritative id (cloud) to avoid UUID/type clashes
+        imageData: note.imageData ?? existing.imageData ?? null,
+      });
+    } else {
+      byContent.set(key, note);
+    }
+  }
+
+  return Array.from(byContent.values());
 };
 
 export const formatNotesToMarkdown = (

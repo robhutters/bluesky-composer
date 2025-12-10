@@ -18,43 +18,35 @@ describe("noteUtils", () => {
     expect(k1).not.toBe(k3);
   });
 
-  it("mergeLocalAndCloud keeps unique notes and preserves cloud when duplicate", () => {
-    const cloud = [
-      { id: 1, plaintext: "note one" },
-      { id: 2, plaintext: "note two" },
-    ];
-    const local = [
-      { id: 3, plaintext: "note two" }, // duplicate text, should be ignored
-      { id: 4, plaintext: "note three" },
-    ];
-    const merged = mergeLocalAndCloud(local, cloud);
-    const mergedKeys = merged.map((n) => contentKey(n.plaintext));
-    expect(merged.length).toBe(3);
-    expect(mergedKeys).toContain(contentKey("note one"));
-    expect(mergedKeys).toContain(contentKey("note two"));
-    expect(mergedKeys).toContain(contentKey("note three"));
-  });
-
-  it("mergeLocalAndCloud preserves local imageData when cloud has same plaintext", () => {
-    const cloud = [{ id: 1, plaintext: "same note", imageData: null }];
-    const local = [{ id: 2, plaintext: "same note", imageData: "data:image/png;base64,abc" }];
+  it("mergeLocalAndCloud merges by id and keeps edited text/image for same id", () => {
+    const cloud = [{ id: 1, plaintext: "old text" }];
+    const local = [{ id: 1, plaintext: "new text", imageData: "img-data" }];
     const merged = mergeLocalAndCloud(local, cloud);
     expect(merged).toHaveLength(1);
-    expect(merged[0].imageData).toBe("data:image/png;base64,abc");
-    // cloud id should be kept, local image should be merged
     expect(merged[0].id).toBe(1);
+    expect(merged[0].plaintext).toBe("new text");
+    expect(merged[0].imageData).toBe("img-data");
   });
 
-  it("mergeLocalAndCloud prefers cloud fields but retains local imageData", () => {
-    const cloud = [{ id: 10, plaintext: "hello world", extra: "cloud" }];
-    const local = [{ id: 20, plaintext: "hello world", imageData: "img-data", localOnly: true }];
+  it("mergeLocalAndCloud dedupes identical plaintext across different ids", () => {
+    const cloud = [{ id: 2, plaintext: "same note", extra: "cloud" }];
+    const local = [{ id: 3, plaintext: "same note", imageData: "local-img" }];
     const merged = mergeLocalAndCloud(local, cloud);
     expect(merged).toHaveLength(1);
     const note = merged[0];
-    // cloud wins for ids/extra
-    expect(note.id).toBe(10);
+    // one note remains; cloud id stays authoritative, local fields merged
+    expect(note.id).toBe(2);
     expect(note.extra).toBe("cloud");
-    // local image is retained
-    expect(note.imageData).toBe("img-data");
+    expect(note.imageData).toBe("local-img");
+  });
+
+  it("mergeLocalAndCloud keeps distinct notes when plaintext differs", () => {
+    const cloud = [{ id: 1, plaintext: "note one" }];
+    const local = [{ id: 2, plaintext: "note two" }];
+    const merged = mergeLocalAndCloud(local, cloud);
+    expect(merged).toHaveLength(2);
+    const keys = merged.map((n) => contentKey(n.plaintext));
+    expect(keys).toContain(contentKey("note one"));
+    expect(keys).toContain(contentKey("note two"));
   });
 });

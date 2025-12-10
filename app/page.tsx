@@ -226,15 +226,27 @@ export default function MainPage() {
     if (res.ok) {
       const data = await res.json();
       const local = getLocalNotes();
-      const merged = mergeLocalAndCloud(local, data).filter(
-        (note: any) => !deletedIds.has(String(note.id))
-      );
-      setNotes(merged);
+
+      // For Pro, treat cloud as source of truth; use local cache only to push unsynced items once.
       if (isPro) {
-        await syncLocalNotesToCloud(data, session.access_token);
-      }
-      if (isPro) {
+        const filteredCloud = (data || []).filter(
+          (note: any) => !deletedIds.has(String(note.id))
+        );
+        setNotes(filteredCloud);
+
+        // Push any lingering local notes, then clear the local cache so edits don't resurrect old copies.
+        if (local.length) {
+          await syncLocalNotesToCloud(data, session.access_token);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify([]));
+          }
+        }
         await fetchMetadata();
+      } else {
+        const merged = mergeLocalAndCloud(local, data).filter(
+          (note: any) => !deletedIds.has(String(note.id))
+        );
+        setNotes(merged);
       }
     }
   }, [deletedIds, isPro, user]);
@@ -518,7 +530,8 @@ export default function MainPage() {
     });
       if (refetch.ok) {
         const data = await refetch.json();
-        setNotes(mergeLocalAndCloud(localNotes, data));
+        // After push, rely on cloud as the source of truth.
+        setNotes(data);
         if (pushedCount > 0) {
           setSyncMessage(`Synced ${pushedCount} local note(s) to cloud`);
         setTimeout(() => setSyncMessage(null), 4000);

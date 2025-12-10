@@ -29,6 +29,7 @@ describe("mergeLocalAndCloud", () => {
     const merged = mergeLocalAndCloud(local, cloud);
     // merged should have only one copy of the content
     expect(merged.length).toBe(1);
+    // cloud id stays authoritative to avoid UUID/type mismatches
     expect(merged[0].id).toBe(1);
   });
 
