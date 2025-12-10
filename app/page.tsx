@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
-import { contentKey, mergeLocalAndCloud, formatNotesToMarkdown, canExportNotes } from "./lib/noteUtils";
+import { contentKey, mergeLocalAndCloud, formatNotesToMarkdown, canExportNotes, sortWithPins } from "./lib/noteUtils";
 import Composer from "./components/Composer";
 import NotesList from "./components/NotesList";
 import Auth from "./components/Auth";
