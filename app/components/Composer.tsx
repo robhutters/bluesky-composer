@@ -6,7 +6,7 @@ const MAX_CHARACTERS = 300;
 const LOCAL_DRAFT_KEY = "bsky-composer-draft";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const ACTIVITY_PING_INTERVAL_MS = 30000;
-const EMOJIS = ["😀", "😅", "🥳", "🥹", "😄", "😋", "😂", "🤣", "🥲", "☺️", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😙", "😝", "😜", "🤨", "🧐", "🤓", "😎", "🤩", "😏", "😒", "😞", "😔", "😟", "😕", "😭", "🙁", "🥺", "😫", "😤", "😠", "😡", "🤬", "🥵", "😳", "🔥", "✨", "👍", "💡", "📌", "🧠", "🍕", "☕️", "✅", "💬", "🎮", "🕹️", "🧭"];
+const EMOJIS = ["😀", "😅", "🥳", "🥹", "😄", "😋", "😂", "🤣", "🥲", "☺️", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😙", "😝", "😜", "🤨", "🧐", "🤓", "😎", "🤩", "😏", "😒", "😞", "😔", "😟", "😕", "😭", "🙁", "🥺", "😫", "😤", "😠", "😡", "🤬", "🥵", "😳", "🔥", "✨", "👍", "💡", "📌", "🧠", "🍕", "☕️", "✅", "💬", "🎮", "🕹️", "🧭", "👀", "🐈" , "🐈‍⬛" , "👇", "👎" , "🖕", "👉" , "🤌" ];
 
 export default function Composer({
   onNoteSaved,
@@ -635,7 +635,7 @@ export default function Composer({
             {text.length}/{MAX_CHARACTERS}
           </span>
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-xs font-semibold text-gray-700">Replies</label>
+            <label className="text-xs font-semibold text-gray-700">Limit replies to post</label>
             <select
               value={replyControl}
               onChange={(e) => setReplyControl(e.target.value as any)}

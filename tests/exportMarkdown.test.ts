@@ -10,7 +10,7 @@ describe("formatNotesToMarkdown", () => {
     const md = formatNotesToMarkdown(notes, metadata);
     expect(md).toContain("Hello world");
     expect(md).toContain("tag1");
-    expect(md).toContain("![Image for note 1](https://example.com/img.png)");
+    expect(md).toContain("![Image 1 for note 1](https://example.com/img.png)");
   });
 
   it("gracefully handles missing metadata and timestamps", () => {

@@ -1154,7 +1154,7 @@ export default function MainPage() {
           )}
         <div className="mt-4 w-full flex flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
           <div className="flex flex-col gap-1 w-full sm:w-auto">
-            <label className="text-xs font-semibold text-slate-700">Replies</label>
+            <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
             <select
               value={replyControl}
               onChange={(e) => setReplyControl(e.target.value as any)}
