@@ -33,16 +33,6 @@ async function uploadImage(accessJwt: string, dataUrl?: string | null) {
   return json?.blob || null;
 }
 
-const buildAllow = (replyControl: string, listUri?: string) => {
-  if (!replyControl || replyControl === "anyone") return null;
-  if (replyControl === "no_replies") return [];
-  if (replyControl === "mentions") return [{ $type: "app.bsky.feed.threadgate#mentionRule" }];
-  if (replyControl === "followers") return [{ $type: "app.bsky.feed.threadgate#followerRule" }];
-  if (replyControl === "following") return [{ $type: "app.bsky.feed.threadgate#followingRule" }];
-  if (replyControl === "list" && listUri) return [{ $type: "app.bsky.feed.threadgate#listRule", list: listUri }];
-  return null;
-};
-
 export async function POST(req: Request) {
   try {
     const { identifier, appPassword, text, images, replyControl, replyListUri } = await req.json();
