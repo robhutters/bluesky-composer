@@ -856,14 +856,12 @@ export default function MainPage() {
   return (
     <>
   
-      <div className="space-y-6 flex flex-col items-center justify-center min-h-screen py-2 px-4 bg-gray-100 relative">
+      <div className="space-y-5 sm:space-y-6 flex flex-col items-center justify-center min-h-screen py-3 sm:py-6 px-2 sm:px-4 bg-gray-100 relative">
 
-
-
-      <main className="w-full max-w-[900px] flex-col flex justify-center">
+      <main className="w-full max-w-[900px] flex-col flex justify-center space-y-3 sm:space-y-4 md:space-y-5">
         {!user && (
           <div className="mb-6 space-y-2 text-left">
-            <h1 className="text-2xl sm:text-3xl font-semibold uppercase mt-8 text-slate-900 press-start">
+            <h1 className="text-2xl sm:text-3xl font-semibold uppercase mt-4 sm:mt-8 text-slate-900 press-start">
               Because I know you love yapping about games on Bluesky
             </h1>
             <p className="text-md text-slate-600">
@@ -944,7 +942,7 @@ export default function MainPage() {
               width={600}
               height={200}
               sizes="100vw"
-              className="mx-auto mb-4 mt-8 w-full max-w-[600px] h-auto"
+              className="mx-auto mb-4 mt-4 sm:mt-8 w-full max-w-[600px] h-auto"
             />
             <Image
               src="/assets/bluesky-demo.gif"
@@ -952,7 +950,7 @@ export default function MainPage() {
               width={600}
               height={400}
               sizes="100vw"
-              className="mx-auto mb-8 w-full max-w-[600px] h-auto rounded-lg border border-gray-200 shadow-sm"
+              className="mx-auto mb-6 sm:mb-8 w-full max-w-[600px] h-auto rounded-lg border border-gray-200 shadow-sm"
             />
             <h2 className="text-center">This is what your notes look like when stored in the cloud.</h2>
             <Image 
@@ -961,7 +959,7 @@ export default function MainPage() {
               width={600}
               height={200}
               sizes="100vw"
-              className="mx-auto mb-8 w-full max-w-[600px] h-auto rounded lg border border-gray-200 shadow-sm"
+              className="mx-auto mb-6 sm:mb-8 w-full max-w-[600px] h-auto rounded lg border border-gray-200 shadow-sm"
               />
           </>
         )}
@@ -1106,15 +1104,15 @@ export default function MainPage() {
       {!user && (
         <div>
           <div className="mt-8 mb-4 p-4 border rounded bg-white shadow-sm">
-            <h4 className="text-base sm:text-lg font-semibold mb-2">PRO</h4>
-            <p className="text-xs sm:text-sm text-gray-600 mb-1">Pay once, keep PRO forever. Price: <span className="font-semibold text-gray-800">€15</span>.</p>
-            <p className="text-xs sm:text-sm text-gray-600 mb-3">Here’s what you get now and what’s coming soon:</p>
+            <h4 className="text-lg sm:text-xl md:text-2xl font-bold mb-2">PRO</h4>
+            <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-1">Pay once, keep PRO forever. Price: <span className="font-semibold text-gray-800">€15</span>.</p>
+            <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-3">Here’s what you get now and what’s coming soon:</p>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm text-left border">
+              <table className="min-w-full text-sm sm:text-base md:text-lg text-left border">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-2 border">Feature</th>
-                    <th className="px-3 py-2 border">Status</th>
+                    <th className="px-3 py-2 border text-sm sm:text-base md:text-lg">Feature</th>
+                    <th className="px-3 py-2 border text-sm sm:text-base md:text-lg">Status</th>
                   </tr>
                 </thead>
                 <tbody>

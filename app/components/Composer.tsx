@@ -29,7 +29,7 @@ export default function Composer({
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const lastPingRef = useRef<number>(0);
   const lastSavePingRef = useRef<number>(0);
-  const [images, setImages] = useState<{ data: string; name: string }[]>([]);
+  const [images, setImages] = useState<{ data: string; name: string; alt: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyAppPassword, setBskyAppPassword] = useState("");
@@ -303,7 +303,7 @@ export default function Composer({
           identifier: bskyHandle.trim(),
           appPassword: bskyAppPassword.trim(),
           text: safe,
-          images: images.map((img) => img.data),
+          images: images.map((img) => ({ data: img.data, alt: img.alt || img.name })),
           replyControl,
           replyListUri,
         }),
@@ -547,14 +547,13 @@ export default function Composer({
               return;
             }
             const allowedTypes = ["image/png", "image/jpeg"];
-            const next: { data: string; name: string }[] = [];
             const max = 4;
             const current = [...images];
             const slots = Math.max(0, max - current.length);
             const chosen = files.slice(0, slots);
 
             const readFile = (file: File) =>
-              new Promise<{ data: string; name: string } | null>((resolve) => {
+              new Promise<{ data: string; name: string; alt: string } | null>((resolve) => {
                 const mime = (file.type || "").toLowerCase();
                 const ext = file.name.split(".").pop()?.toLowerCase() || "";
                 const extAllowed = ["png", "jpg", "jpeg"].includes(ext);
@@ -569,7 +568,9 @@ export default function Composer({
               });
 
             Promise.all(chosen.map(readFile)).then((results) => {
-              const valid = results.filter(Boolean) as { data: string; name: string }[];
+              const valid = results
+                .filter(Boolean)
+                .map((r) => ({ ...r!, alt: r?.name || "" })) as { data: string; name: string; alt: string }[];
               setImages([...current, ...valid].slice(0, max));
             });
           }}
@@ -577,11 +578,22 @@ export default function Composer({
         {images.length > 0 && (
           <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
             {images.map((img, idx) => (
-              <div key={idx} className="relative">
+              <div key={idx} className="relative space-y-1">
                 <img
                   src={img.data}
-                  alt={img.name}
+                  alt={img.alt || img.name}
                   className="h-24 w-full object-cover rounded border border-gray-200"
+                />
+                <input
+                  type="text"
+                  value={img.alt}
+                  onChange={(e) => {
+                    const next = [...images];
+                    next[idx] = { ...next[idx], alt: e.target.value };
+                    setImages(next);
+                  }}
+                  placeholder="Alt text"
+                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 shadow-sm"
                 />
                 <button
                   type="button"

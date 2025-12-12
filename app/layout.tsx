@@ -6,7 +6,19 @@ import Script from "next/script";
 
 export const metadata: Metadata = {
   title: "BlueSky Composer - Notes app for BlueSky users",
-  description: "A simple notes app for BlueSky users, built with NextJS and Supabase.",
+  description:
+    "Browser-based desktop app for passionate yappers who love talking about their favourite games on BlueSky. Draft, organize, and post with less friction.",
+  keywords: [
+    "BlueSky",
+    "notes app",
+    "composer",
+    "desktop",
+    "gaming",
+    "thread",
+    "posting",
+    "pro",
+    "encrypted",
+  ],
 };
 
 export default function RootLayout({

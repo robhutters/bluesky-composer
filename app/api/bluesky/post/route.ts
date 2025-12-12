@@ -39,10 +39,15 @@ export async function POST(req: Request) {
     if (!identifier || !appPassword || !text) {
       return NextResponse.json({ error: "Missing credentials or text" }, { status: 400 });
     }
-    const imageArray: string[] = Array.isArray(images)
-      ? images.filter((img: any) => typeof img === "string").slice(0, 4)
+    const imageArray: { data: string; alt?: string }[] = Array.isArray(images)
+      ? images
+          .map((img: any) =>
+            typeof img === "string" ? { data: img, alt: undefined } : { data: img?.data, alt: img?.alt }
+          )
+          .filter((img) => typeof img.data === "string")
+          .slice(0, 4)
       : [];
-    if (imageArray.some((img) => img.startsWith("data:image/gif"))) {
+    if (imageArray.some((img) => img.data.startsWith("data:image/gif"))) {
       return NextResponse.json(
         { error: "Animated GIFs are not supported for posting right now. Please use static images." },
         { status: 400 }
@@ -74,15 +79,15 @@ export async function POST(req: Request) {
     if (imageArray.length) {
       const uploads = [];
       for (const img of imageArray.slice(0, 4)) {
-        const blob = await uploadImage(accessJwt, img);
-        if (blob) uploads.push(blob);
+        const blob = await uploadImage(accessJwt, img.data);
+        if (blob) uploads.push({ blob, alt: img.alt });
       }
       if (uploads.length) {
         embed = {
           $type: "app.bsky.embed.images",
-          images: uploads.map((blob, idx) => ({
-            alt: text.slice(0, 100) || `image-${idx + 1}`,
-            image: blob,
+          images: uploads.map((item, idx) => ({
+            alt: item.alt || text.slice(0, 100) || `image-${idx + 1}`,
+            image: item.blob,
           })),
         };
       }

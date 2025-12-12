@@ -41,7 +41,10 @@ export async function POST(req: Request) {
     }
     const hasGif = posts.some((p: any) =>
       Array.isArray(p?.images)
-        ? p.images.some((img: any) => typeof img === "string" && img.startsWith("data:image/gif"))
+        ? p.images.some((img: any) => {
+            const data = typeof img === "string" ? img : img?.data;
+            return typeof data === "string" && data.startsWith("data:image/gif");
+          })
         : typeof p?.imageData === "string" && p.imageData.startsWith("data:image/gif")
     );
     if (hasGif) {
@@ -77,10 +80,15 @@ export async function POST(req: Request) {
     for (let i = 0; i < posts.length; i++) {
       const post = posts[i];
       const text = typeof post?.text === "string" ? post.text : "";
-      const imgArray: string[] = Array.isArray(post?.images)
-        ? post.images.filter((img: any) => typeof img === "string").slice(0, 4)
+      const imgArray: { data: string; alt?: string }[] = Array.isArray(post?.images)
+        ? post.images
+            .map((img: any) =>
+              typeof img === "string" ? { data: img, alt: undefined } : { data: img?.data, alt: img?.alt }
+            )
+            .filter((img) => typeof img.data === "string")
+            .slice(0, 4)
         : post?.imageData
-          ? [post.imageData]
+          ? [{ data: post.imageData, alt: undefined }]
           : [];
       if (!text) continue;
 
@@ -88,15 +96,15 @@ export async function POST(req: Request) {
       if (imgArray.length) {
         const uploads = [];
         for (const img of imgArray.slice(0, 4)) {
-          const blob = await uploadImage(accessJwt, img);
-          if (blob) uploads.push(blob);
+          const blob = await uploadImage(accessJwt, img.data);
+          if (blob) uploads.push({ blob, alt: img.alt });
         }
         if (uploads.length) {
           embed = {
             $type: "app.bsky.embed.images",
-            images: uploads.map((blob, idx) => ({
-              alt: text.slice(0, 100) || `image-${idx + 1}`,
-              image: blob,
+            images: uploads.map((item, idx) => ({
+              alt: item.alt || text.slice(0, 100) || `image-${idx + 1}`,
+              image: item.blob,
             })),
           };
         }
