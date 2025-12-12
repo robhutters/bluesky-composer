@@ -58,6 +58,11 @@ export default function NotesList({
     <div className="mt-6">
       <h3 className="text-lg font-semibold mb-3">Your Notes</h3>
       <p className="text-xs text-gray-600 mb-2">Drag and drop to reorder your notes (PRO only). Use the up/down buttons below (PRO only).</p>
+      {(!notes || notes.length === 0) && (
+        <div className="mb-4 rounded border-2 border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-600">
+          No notes to display yet.
+        </div>
+      )}
       <ul className="space-y-3">
         {notes.map((note, index) => {
           const meta = metadata[String(note.id)] || { pinned: false, tags: [] };
