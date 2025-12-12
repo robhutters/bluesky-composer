@@ -597,17 +597,16 @@ export default function Composer({
         </p>
       </div>
 
-      <div className="flex justify-between items-center mt-3">
-        <span
-          className={`text-sm ${
-            text.length === MAX_CHARACTERS ? "text-red-500" : "text-gray-500"
-          }`}
-        >
-          {text.length}/{MAX_CHARACTERS}
-        </span>
-
-        <div className="flex flex-col gap-2 items-end">
-          <div className="flex items-center gap-2">
+      <div className="mt-3 space-y-3">
+        <div className="flex flex-wrap items-center gap-3 justify-between">
+          <span
+            className={`text-sm ${
+              text.length === MAX_CHARACTERS ? "text-red-500" : "text-gray-500"
+            }`}
+          >
+            {text.length}/{MAX_CHARACTERS}
+          </span>
+          <div className="flex items-center gap-2 flex-wrap">
             <label className="text-xs font-semibold text-gray-700">Replies</label>
             <select
               value={replyControl}
@@ -626,15 +625,28 @@ export default function Composer({
                 value={replyListUri}
                 onChange={(e) => setReplyListUri(e.target.value)}
                 placeholder="at://did:example/app.bsky.graph.list/..."
-                className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 shadow-sm"
+                className="w-full sm:w-auto rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 shadow-sm"
               />
             )}
           </div>
-          <div className="flex gap-2">
+        </div>
+
+        <div className="flex gap-2 justify-end flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              setText("");
+              setImages([]);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }}
+            className="px-3 py-2 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50"
+          >
+            Clear note
+          </button>
           <button
             onClick={postToBluesky}
             disabled={text.length === 0 || posting}
-            className={`px-3 py-2 rounded-md text-white transition ${
+            className={`px-3 py-2 rounded-md text-white text-sm font-semibold transition ${
               text.length === 0 || posting
                 ? "bg-sky-400 cursor-not-allowed opacity-60"
                 : "bg-sky-600 hover:bg-sky-700"
@@ -645,7 +657,7 @@ export default function Composer({
           <button
             onClick={saveNote}
             disabled={text.length === 0 || loading}
-            className={`px-4 py-2 rounded-md text-white transition ${
+            className={`px-4 py-2 rounded-md text-white text-sm font-semibold transition ${
               text.length === 0 || loading
                 ? "bg-blue-400 cursor-not-allowed opacity-50"
                 : "bg-blue-600 hover:bg-blue-700"
@@ -653,7 +665,6 @@ export default function Composer({
           >
             {loading ? "Saving..." : "Save note"}
           </button>
-          </div>
         </div>
       </div>
 
