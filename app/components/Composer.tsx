@@ -42,6 +42,10 @@ export default function Composer({
   const [giftCode, setGiftCode] = useState("");
   const [giftLoading, setGiftLoading] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
+  const [replyControl, setReplyControl] = useState<
+    "anyone" | "no_replies" | "mentions" | "followers" | "following" | "list"
+  >("anyone");
+  const [replyListUri, setReplyListUri] = useState("");
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const clearBskyCreds = () => {
     setBskyHandle("");
@@ -302,6 +306,8 @@ export default function Composer({
           appPassword: bskyAppPassword.trim(),
           text: safe,
           imageData: imageData || null,
+          replyControl,
+          replyListUri,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -588,7 +594,31 @@ export default function Composer({
           {text.length}/{MAX_CHARACTERS}
         </span>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 items-end">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-gray-700">Replies</label>
+            <select
+              value={replyControl}
+              onChange={(e) => setReplyControl(e.target.value as any)}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 shadow-sm"
+            >
+              <option value="anyone">Anyone</option>
+              <option value="no_replies">No replies</option>
+              <option value="mentions">Mentions only</option>
+              <option value="followers">My followers</option>
+              <option value="following">People I follow</option>
+              <option value="list">List (AT-URI)</option>
+            </select>
+            {replyControl === "list" && (
+              <input
+                value={replyListUri}
+                onChange={(e) => setReplyListUri(e.target.value)}
+                placeholder="at://did:example/app.bsky.graph.list/..."
+                className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 shadow-sm"
+              />
+            )}
+          </div>
+          <div className="flex gap-2">
           <button
             onClick={postToBluesky}
             disabled={text.length === 0 || posting}
@@ -611,6 +641,7 @@ export default function Composer({
           >
             {loading ? "Saving..." : "Save note"}
           </button>
+          </div>
         </div>
       </div>
 

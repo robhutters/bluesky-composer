@@ -32,9 +32,19 @@ async function uploadImage(accessJwt: string, dataUrl?: string | null) {
   return json?.blob || null;
 }
 
+const buildAllow = (replyControl: string, listUri?: string) => {
+  if (!replyControl || replyControl === "anyone") return null;
+  if (replyControl === "no_replies") return [];
+  if (replyControl === "mentions") return [{ $type: "app.bsky.feed.threadgate#mentionRule" }];
+  if (replyControl === "followers") return [{ $type: "app.bsky.feed.threadgate#followerRule" }];
+  if (replyControl === "following") return [{ $type: "app.bsky.feed.threadgate#followingRule" }];
+  if (replyControl === "list" && listUri) return [{ $type: "app.bsky.feed.threadgate#listRule", list: listUri }];
+  return null;
+};
+
 export async function POST(req: Request) {
   try {
-    const { identifier, appPassword, text, imageData } = await req.json();
+    const { identifier, appPassword, text, imageData, replyControl, replyListUri } = await req.json();
     if (!identifier || !appPassword || !text) {
       return NextResponse.json({ error: "Missing credentials or text" }, { status: 400 });
     }
@@ -110,6 +120,34 @@ export async function POST(req: Request) {
         { error: `Post failed: ${postRes.status} ${detail}`.trim() },
         { status: 500 }
       );
+    }
+
+    const postJson = await postRes.json();
+    const postUri = postJson?.uri;
+
+    // Optional threadgate for reply controls
+    const allow = buildAllow(replyControl, replyListUri);
+    if (postUri && allow) {
+      const rkey = postUri.split("/").pop();
+      const gateRecord: any = {
+        $type: "app.bsky.feed.threadgate",
+        post: postUri,
+        createdAt: new Date().toISOString(),
+        allow,
+      };
+      await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessJwt}`,
+        },
+        body: JSON.stringify({
+          repo: did,
+          collection: "app.bsky.feed.threadgate",
+          rkey,
+          record: gateRecord,
+        }),
+      }).catch(() => {});
     }
 
     return NextResponse.json({ success: true });

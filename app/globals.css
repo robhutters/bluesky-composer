@@ -24,3 +24,7 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.press-start {
+  font-family: "Press Start 2P", system-ui, -apple-system, "Segoe UI", sans-serif;
+}

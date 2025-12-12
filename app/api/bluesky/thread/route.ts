@@ -3,6 +3,16 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const buildAllow = (replyControl: string, listUri?: string) => {
+  if (!replyControl || replyControl === "anyone") return null;
+  if (replyControl === "no_replies") return [];
+  if (replyControl === "mentions") return [{ $type: "app.bsky.feed.threadgate#mentionRule" }];
+  if (replyControl === "followers") return [{ $type: "app.bsky.feed.threadgate#followerRule" }];
+  if (replyControl === "following") return [{ $type: "app.bsky.feed.threadgate#followingRule" }];
+  if (replyControl === "list" && listUri) return [{ $type: "app.bsky.feed.threadgate#listRule", list: listUri }];
+  return null;
+};
+
 function parseDataUrl(dataUrl: string) {
   const match = dataUrl.match(/^data:(.*);base64,(.*)$/);
   if (!match) return null;
@@ -34,7 +44,7 @@ async function uploadImage(accessJwt: string, dataUrl?: string | null) {
 
 export async function POST(req: Request) {
   try {
-    const { identifier, appPassword, posts } = await req.json();
+    const { identifier, appPassword, posts, replyControl, replyListUri } = await req.json();
     if (!identifier || !appPassword || !Array.isArray(posts) || posts.length === 0) {
       return NextResponse.json({ error: "Missing credentials or posts" }, { status: 400 });
     }
@@ -131,6 +141,44 @@ export async function POST(req: Request) {
       if (uri && cid) {
         if (!root) root = { uri, cid };
         parent = { uri, cid };
+      }
+    }
+
+    // Create threadgate for reply controls when requested
+    if (root && replyControl && replyControl !== "anyone") {
+      const allow = buildAllow(replyControl, replyListUri);
+      if (replyControl === "list" && (!replyListUri || !allow)) {
+        return NextResponse.json({ error: "List reply rule requires a list AT-URI" }, { status: 400 });
+      }
+      if (allow === null) {
+        return NextResponse.json({ error: "Invalid reply control" }, { status: 400 });
+      }
+      const rkey = root.uri.split("/").pop();
+      const gateRecord = {
+        $type: "app.bsky.feed.threadgate",
+        post: root.uri,
+        createdAt: new Date().toISOString(),
+        allow,
+      };
+      const gateRes = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessJwt}`,
+        },
+        body: JSON.stringify({
+          repo: did,
+          collection: "app.bsky.feed.threadgate",
+          rkey,
+          record: gateRecord,
+        }),
+      });
+      if (!gateRes.ok) {
+        const detail = await gateRes.text().catch(() => "");
+        return NextResponse.json(
+          { error: `Threadgate failed: ${gateRes.status} ${detail}`.trim() },
+          { status: 500 }
+        );
       }
     }
 

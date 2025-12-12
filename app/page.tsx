@@ -15,6 +15,7 @@ const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const BANNER_SEEN_KEY = "bsky-composer-banner-seen";
 const LOCAL_IMAGE_MAP_KEY = "bsky-composer-note-images";
+const GIFT_OFFER_KEY = "bsky-composer-gift-offer";
 const LOCAL_ORDER_KEY = "bsky-composer-note-order";
 const MAX_CHARACTERS = 300;
 
@@ -38,12 +39,15 @@ export default function MainPage() {
   const [threadSelection, setThreadSelection] = useState<Set<string | number>>(new Set());
   const [threadMessage, setThreadMessage] = useState<string | null>(null);
   const [postingThread, setPostingThread] = useState(false);
+  const [replyControl, setReplyControl] = useState<"anyone" | "no_replies" | "mentions" | "followers" | "following" | "list">("anyone");
+  const [replyListUri, setReplyListUri] = useState<string>("");
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [editMessage, setEditMessage] = useState<string | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showBanner, setShowBanner] = useState(false);
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const [pinInfo, setPinInfo] = useState<string | null>(null);
+  const [giftOfferCode, setGiftOfferCode] = useState<string | null>(null);
 
   const ensureVisitorId = () => {
     if (typeof window === "undefined") return null;
@@ -89,6 +93,32 @@ export default function MainPage() {
       }
     }
   }, []);
+
+  // Offer a random unused gift code to non-logged-in visitors (once per client)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (user) return; // don't offer to logged-in users
+    const vid = ensureVisitorId();
+    if (!vid) return;
+    const offered = window.localStorage.getItem(GIFT_OFFER_KEY);
+    if (offered) {
+      setGiftOfferCode(offered);
+      return;
+    }
+    void fetch("/api/gift-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: vid }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.code) {
+          setGiftOfferCode(data.code);
+          window.localStorage.setItem(GIFT_OFFER_KEY, data.code);
+        }
+      })
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -722,6 +752,8 @@ export default function MainPage() {
             text: n.plaintext || "",
             imageData: n.imageData || null,
           })),
+          replyControl,
+          replyListUri,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -823,7 +855,17 @@ export default function MainPage() {
 
 
 
-      <main className="w-full max-w-[800px] flex-col flex justify-center">
+      <main className="w-full max-w-[900px] flex-col flex justify-center">
+        {!user && (
+          <div className="mb-6 space-y-2 text-left">
+            <h1 className="text-2xl sm:text-3xl font-semibold uppercase mt-8 text-slate-900 press-start">
+              Because I know you love yapping about games on Bluesky
+            </h1>
+            <p className="text-md text-slate-600">
+              Think of it as a desktop notes app for BlueSky designed specifically for you.
+            </p>
+          </div>
+        )}
         {/* Inline messages (upgrade/sync) */}
         {upgradeMessage && (
           <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm">
@@ -846,6 +888,22 @@ export default function MainPage() {
               onClick={() => setShowBanner(false)}
             >
               Got it
+            </button>
+          </div>
+        )}
+        {giftOfferCode && !user && (
+          <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <div className="font-semibold">You’ve got a gift code</div>
+              <div className="text-xs text-emerald-700">
+                Use it at checkout: <span className="font-mono">{giftOfferCode}</span>
+              </div>
+            </div>
+            <button
+              className="self-start sm:self-auto px-3 py-1 text-xs font-semibold rounded border border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-100"
+              onClick={() => navigator.clipboard.writeText(giftOfferCode).catch(() => {})}
+            >
+              Copy
             </button>
           </div>
         )}
@@ -873,25 +931,46 @@ export default function MainPage() {
               })}
           </div>
         )}
-        <Image
-          src="/assets/quote.jpg"
-          alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'"
-          width={600}
-          height={200}
-          sizes="100vw"
-          className="mx-auto mb-4 mt-8 w-full max-w-[600px] h-auto"
-        />
-        <Image
-          src="/assets/bluesky-demo.gif"
-          alt="BlueSky Composer demo"
-          width={600}
-          height={400}
-          sizes="100vw"
-          className="mx-auto mb-8 w-full max-w-[600px] h-auto rounded-lg border border-gray-200 shadow-sm"
-        />
+        {!user && (
+          <>
+            <Image
+              src="/assets/quote.jpg"
+              alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'"
+              width={600}
+              height={200}
+              sizes="100vw"
+              className="mx-auto mb-4 mt-8 w-full max-w-[600px] h-auto"
+            />
+            <Image
+              src="/assets/bluesky-demo.gif"
+              alt="BlueSky Composer demo"
+              width={600}
+              height={400}
+              sizes="100vw"
+              className="mx-auto mb-8 w-full max-w-[600px] h-auto rounded-lg border border-gray-200 shadow-sm"
+            />
+            <h2 className="text-center">This is what your notes look like when stored in the cloud.</h2>
+            <Image 
+              src="/assets/notes_encrypted.png"
+              alt="Your notes are always encrypted! This is what it looks like: a random set of characters."
+              width={600}
+              height={200}
+              sizes="100vw"
+              className="mx-auto mb-8 w-full max-w-[600px] h-auto rounded lg border border-gray-200 shadow-sm"
+              />
+          </>
+        )}
 
         {user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
       {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
+      {!user && (
+        <div className="mb-3 w-full flex justify-center">
+          <div className="inline-flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-rose-500 inline-block" />
+            Try it for free!
+          </div>
+        </div>
+      )}
       <Composer
         onNoteSaved={fetchNotes}
         onLocalSave={addLocalNote}
@@ -944,7 +1023,30 @@ export default function MainPage() {
               </ol>
             </div>
           )}
-        <div className="mt-4 w-full flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <div className="mt-4 w-full flex flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
+          <div className="flex flex-col gap-1 w-full sm:w-auto">
+            <label className="text-xs font-semibold text-slate-700">Replies</label>
+            <select
+              value={replyControl}
+              onChange={(e) => setReplyControl(e.target.value as any)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
+            >
+              <option value="anyone">Anyone can reply</option>
+              <option value="no_replies">No replies (lock thread)</option>
+              <option value="mentions">Only people mentioned</option>
+              <option value="followers">Only my followers</option>
+              <option value="following">Only people I follow</option>
+              <option value="list">Only people on a list (enter list AT-URI)</option>
+            </select>
+            {replyControl === "list" && (
+              <input
+                value={replyListUri}
+                onChange={(e) => setReplyListUri(e.target.value)}
+                placeholder="at://did:example/app.bsky.graph.list/xxxx"
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
+              />
+            )}
+          </div>
           <button
             onClick={() => exportCloudNotes("json")}
             disabled={exporting}
@@ -1013,7 +1115,7 @@ export default function MainPage() {
                     { feature: "Post directly to Bluesky with a secure app password", status: "Available (PRO)" },
                     { feature: "Post selected notes as a thread to Bluesky", status: "Available (PRO)" },
                     { feature: "Copy selected notes to clipboard as text", status: "Available (PRO)" },
-                    { feature: "Realtime updates (Supabase) with polling fallback", status: "Available (PRO)" },
+                    { feature: "Notes synced to the cloud (encrypted)", status: "Available (PRO)" },
                     { feature: "Delete protection (notes and metadata deleted across local/cloud)", status: "Available (PRO)" },
                     { feature: "Version history & restore", status: "Coming soon (PRO)" },
                     { feature: "Advanced search & filters", status: "Coming soon (PRO)" },
@@ -1048,9 +1150,8 @@ export default function MainPage() {
             <h4 className="text-base sm:text-lg font-semibold mb-2">What you get for free</h4>
             <ul className="text-xs sm:text-sm text-gray-700 list-disc list-inside space-y-1">
               <li>Local mode: drafts and saved notes stay on this device</li>
-              <li>Optional local image attachments (never uploaded to Supabase)</li>
-              <li>Write, copy, and delete notes locally</li>
-              <li>Bluesky posting from the composer (single post) with a local-only app password</li>
+              <li>Write, copy, and delete notes</li>
+              <li>Post directly to BlueSky (with the exception of Threads) with a local-only app password</li>
             </ul>
           </div>
           <div className="p-4 border mt-12 rounded bg-yellow-50">
