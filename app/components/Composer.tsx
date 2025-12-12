@@ -29,8 +29,7 @@ export default function Composer({
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const lastPingRef = useRef<number>(0);
   const lastSavePingRef = useRef<number>(0);
-  const [imageData, setImageData] = useState<string | null>(null);
-  const [imageName, setImageName] = useState<string | null>(null);
+  const [images, setImages] = useState<{ data: string; name: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyAppPassword, setBskyAppPassword] = useState("");
@@ -179,7 +178,7 @@ export default function Composer({
     if (!safe) return;
     const canUseCloud = user && isPro;
     // Always keep a local copy
-    onLocalSave(safe, imageData);
+    onLocalSave(safe, images[0]?.data || null);
     if (visitorId) {
       const now = Date.now();
       if (now - lastSavePingRef.current > 5000) {
@@ -232,7 +231,7 @@ export default function Composer({
     try {
       const canUseCloud = user && isPro;
       // Always save locally
-      onLocalSave(safe, imageData);
+      onLocalSave(safe, images[0]?.data || null);
       if (visitorId) {
         const now = Date.now();
         if (now - lastSavePingRef.current > 5000) {
@@ -275,8 +274,7 @@ export default function Composer({
         setTimeout(() => setFlashMessage(null), 3000);
       }
       setText("");
-      setImageData(null);
-      setImageName(null);
+      setImages([]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -305,7 +303,7 @@ export default function Composer({
           identifier: bskyHandle.trim(),
           appPassword: bskyAppPassword.trim(),
           text: safe,
-          imageData: imageData || null,
+          images: images.map((img) => img.data),
           replyControl,
           replyListUri,
         }),
@@ -513,7 +511,7 @@ export default function Composer({
       />
       <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
         <label className="block text-sm font-semibold text-gray-800">
-          Optional image (png or jpg):
+          Optional images (up to 4, png or jpg):
         </label>
         <div className="flex items-center gap-3">
           <button
@@ -521,67 +519,81 @@ export default function Composer({
             onClick={() => fileInputRef.current?.click()}
             className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition filter grayscale hover:grayscale-0 hover:bg-gray-100 hover:shadow-md"
           >
-            {imageName ? "Change image" : "Choose image"}
+            {images.length ? "Add/Change images" : "Choose images"}
           </button>
           <span className="text-xs text-gray-600">
-            {imageName ? imageName : "No image selected"}
+            {images.length ? `${images.length} selected` : "No images selected"}
           </span>
         </div>
         <input
           ref={fileInputRef}
           type="file"
           accept="image/png,image/jpeg"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (!file) {
-              setImageData(null);
-              setImageName(null);
+            const files = Array.from(e.target.files || []);
+            if (!files.length) {
+              setImages([]);
               return;
             }
             const allowedTypes = ["image/png", "image/jpeg"];
-            const mime = (file.type || "").toLowerCase();
-            const ext = file.name.split(".").pop()?.toLowerCase() || "";
-            const extAllowed = ["png", "jpg", "jpeg"].includes(ext);
-            if (!allowedTypes.includes(mime) || !extAllowed) {
-              setFlashMessage("Only PNG or JPG images are allowed.");
-              setTimeout(() => setFlashMessage(null), 4000);
-              e.target.value = "";
-              return;
-            }
-            setImageName(file.name);
-            const reader = new FileReader();
-            reader.onload = () => {
-              setImageData(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+            const next: { data: string; name: string }[] = [];
+            const max = 4;
+            const current = [...images];
+            const slots = Math.max(0, max - current.length);
+            const chosen = files.slice(0, slots);
+
+            const readFile = (file: File) =>
+              new Promise<{ data: string; name: string } | null>((resolve) => {
+                const mime = (file.type || "").toLowerCase();
+                const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                const extAllowed = ["png", "jpg", "jpeg"].includes(ext);
+                if (!allowedTypes.includes(mime) || !extAllowed) {
+                  resolve(null);
+                  return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => resolve({ data: reader.result as string, name: file.name });
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(file);
+              });
+
+            Promise.all(chosen.map(readFile)).then((results) => {
+              const valid = results.filter(Boolean) as { data: string; name: string }[];
+              setImages([...current, ...valid].slice(0, max));
+            });
           }}
         />
-        {imageData && (
-          <div className="mt-2 relative inline-block">
-            <img
-              src={imageData}
-              alt="Selected"
-              className="max-h-32 rounded border border-gray-200"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setImageData(null);
-                setImageName(null);
-                if (fileInputRef.current) {
-                  fileInputRef.current.value = "";
-                }
-              }}
-              className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-white border border-red-200 text-red-600 text-xs font-bold shadow hover:bg-red-50"
-              aria-label="Remove image"
-            >
-              ×
-            </button>
+        {images.length > 0 && (
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {images.map((img, idx) => (
+              <div key={idx} className="relative">
+                <img
+                  src={img.data}
+                  alt={img.name}
+                  className="h-24 w-full object-cover rounded border border-gray-200"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = images.filter((_, i) => i !== idx);
+                    setImages(next);
+                    if (fileInputRef.current && next.length === 0) {
+                      fileInputRef.current.value = "";
+                    }
+                  }}
+                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white border border-red-200 text-red-600 text-xs font-bold shadow hover:bg-red-50"
+                  aria-label="Remove image"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         )}
         <p className="text-[11px] text-gray-500">
-          Images stay on this device and are never uploaded to Supabase. If you post to Bluesky, the image is sent along with the text but only the text message is synced to Supabase.
+          Images stay on this device and are never uploaded to Supabase. If you post to Bluesky, up to 4 images are sent with the text; only the text is synced to Supabase.
         </p>
       </div>
 

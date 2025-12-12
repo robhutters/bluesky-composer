@@ -49,6 +49,11 @@ export default function MainPage() {
   const [pinInfo, setPinInfo] = useState<string | null>(null);
   const [giftOfferCode, setGiftOfferCode] = useState<string | null>(null);
 
+  const scrollToAuth = () => {
+    const el = typeof document !== "undefined" ? document.getElementById("login-form") : null;
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const ensureVisitorId = () => {
     if (typeof window === "undefined") return null;
     let vid = window.localStorage.getItem(LOCAL_VISITOR_KEY);
@@ -894,7 +899,7 @@ export default function MainPage() {
         {giftOfferCode && !user && (
           <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <div className="font-semibold">You’ve got a gift code</div>
+              <div className="font-semibold">You won a free code to PRO (forever), congratulations!</div>
               <div className="text-xs text-emerald-700">
                 Use it at checkout: <span className="font-mono">{giftOfferCode}</span>
               </div>
@@ -965,9 +970,9 @@ export default function MainPage() {
       {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
       {!user && (
         <div className="mb-3 w-full flex justify-center">
-          <div className="inline-flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
+          <div className="inline-flex items-center gap-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
             <span className="h-2 w-2 rounded-full bg-rose-500 inline-block" />
-            Try it for free!
+            Try it for free without signing in!
           </div>
         </div>
       )}
@@ -1146,15 +1151,24 @@ export default function MainPage() {
             </table>
           </div>
           </div>
-          <div className="mt-6 mb-4 p-4 border rounded bg-white shadow-sm">
-            <h4 className="text-base sm:text-lg font-semibold mb-2">What you get for free</h4>
-            <ul className="text-xs sm:text-sm text-gray-700 list-disc list-inside space-y-1">
-              <li>Local mode: drafts and saved notes stay on this device</li>
-              <li>Write, copy, and delete notes</li>
-              <li>Post directly to BlueSky (with the exception of Threads) with a local-only app password</li>
-            </ul>
+          <div className="mt-6 mb-4 p-4 border rounded bg-white shadow-sm" id="login-form">
+          <h4 className="text-base sm:text-lg font-semibold mb-2">What you get for free</h4>
+          <ul className="text-xs sm:text-sm text-gray-700 list-disc list-inside space-y-1">
+            <li>Local mode: drafts and saved notes stay on this device</li>
+            <li>Write, copy, and delete notes without having to sign in</li>
+            <li>Post directly to BlueSky (with the exception of Threads) with a local-only app password</li>
+          </ul>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={scrollToAuth}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Sign in to unlock PRO
+            </button>
           </div>
-          <div className="p-4 border mt-12 rounded bg-yellow-50">
+        </div>
+        <div className="p-4 border mt-12 rounded bg-yellow-50">
             <p className="text-sm">
               You’re browsing anonymously. Your draft and saved notes stay on this device. Sign in and upgrade to Pro to back up notes to the cloud.
             </p>

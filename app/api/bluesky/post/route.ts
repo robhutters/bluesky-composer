@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildAllow } from "@/app/lib/threadgate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,13 +45,16 @@ const buildAllow = (replyControl: string, listUri?: string) => {
 
 export async function POST(req: Request) {
   try {
-    const { identifier, appPassword, text, imageData, replyControl, replyListUri } = await req.json();
+    const { identifier, appPassword, text, images, replyControl, replyListUri } = await req.json();
     if (!identifier || !appPassword || !text) {
       return NextResponse.json({ error: "Missing credentials or text" }, { status: 400 });
     }
-    if (typeof imageData === "string" && imageData.startsWith("data:image/gif")) {
+    const imageArray: string[] = Array.isArray(images)
+      ? images.filter((img: any) => typeof img === "string").slice(0, 4)
+      : [];
+    if (imageArray.some((img) => img.startsWith("data:image/gif"))) {
       return NextResponse.json(
-        { error: "Animated GIFs are not supported for posting right now. Please use a static image." },
+        { error: "Animated GIFs are not supported for posting right now. Please use static images." },
         { status: 400 }
       );
     }
@@ -77,19 +81,19 @@ export async function POST(req: Request) {
     }
 
     let embed: any = undefined;
-    if (imageData) {
-      const blob = await uploadImage(accessJwt, imageData).catch((err) => {
-        throw err;
-      });
-      if (blob) {
+    if (imageArray.length) {
+      const uploads = [];
+      for (const img of imageArray.slice(0, 4)) {
+        const blob = await uploadImage(accessJwt, img);
+        if (blob) uploads.push(blob);
+      }
+      if (uploads.length) {
         embed = {
           $type: "app.bsky.embed.images",
-          images: [
-            {
-              alt: text.slice(0, 100) || "image",
-              image: blob,
-            },
-          ],
+          images: uploads.map((blob, idx) => ({
+            alt: text.slice(0, 100) || `image-${idx + 1}`,
+            image: blob,
+          })),
         };
       }
     }
@@ -127,6 +131,9 @@ export async function POST(req: Request) {
 
     // Optional threadgate for reply controls
     const allow = buildAllow(replyControl, replyListUri);
+    if (replyControl === "list" && !allow) {
+      return NextResponse.json({ error: "List reply rule requires a list AT-URI" }, { status: 400 });
+    }
     if (postUri && allow) {
       const rkey = postUri.split("/").pop();
       const gateRecord: any = {

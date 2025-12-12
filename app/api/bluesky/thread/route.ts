@@ -1,17 +1,8 @@
 import { NextResponse } from "next/server";
+import { buildAllow } from "@/app/lib/threadgate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const buildAllow = (replyControl: string, listUri?: string) => {
-  if (!replyControl || replyControl === "anyone") return null;
-  if (replyControl === "no_replies") return [];
-  if (replyControl === "mentions") return [{ $type: "app.bsky.feed.threadgate#mentionRule" }];
-  if (replyControl === "followers") return [{ $type: "app.bsky.feed.threadgate#followerRule" }];
-  if (replyControl === "following") return [{ $type: "app.bsky.feed.threadgate#followingRule" }];
-  if (replyControl === "list" && listUri) return [{ $type: "app.bsky.feed.threadgate#listRule", list: listUri }];
-  return null;
-};
 
 function parseDataUrl(dataUrl: string) {
   const match = dataUrl.match(/^data:(.*);base64,(.*)$/);
@@ -48,7 +39,11 @@ export async function POST(req: Request) {
     if (!identifier || !appPassword || !Array.isArray(posts) || posts.length === 0) {
       return NextResponse.json({ error: "Missing credentials or posts" }, { status: 400 });
     }
-    const hasGif = posts.some((p: any) => typeof p?.imageData === "string" && p.imageData.startsWith("data:image/gif"));
+    const hasGif = posts.some((p: any) =>
+      Array.isArray(p?.images)
+        ? p.images.some((img: any) => typeof img === "string" && img.startsWith("data:image/gif"))
+        : typeof p?.imageData === "string" && p.imageData.startsWith("data:image/gif")
+    );
     if (hasGif) {
       return NextResponse.json(
         { error: "Animated GIFs are not supported for posting right now. Please use static images in the thread." },
@@ -82,21 +77,27 @@ export async function POST(req: Request) {
     for (let i = 0; i < posts.length; i++) {
       const post = posts[i];
       const text = typeof post?.text === "string" ? post.text : "";
-      const img = post?.imageData;
+      const imgArray: string[] = Array.isArray(post?.images)
+        ? post.images.filter((img: any) => typeof img === "string").slice(0, 4)
+        : post?.imageData
+          ? [post.imageData]
+          : [];
       if (!text) continue;
 
       let embed: any = undefined;
-      if (img) {
-        const blob = await uploadImage(accessJwt, img);
-        if (blob) {
+      if (imgArray.length) {
+        const uploads = [];
+        for (const img of imgArray.slice(0, 4)) {
+          const blob = await uploadImage(accessJwt, img);
+          if (blob) uploads.push(blob);
+        }
+        if (uploads.length) {
           embed = {
             $type: "app.bsky.embed.images",
-            images: [
-              {
-                alt: text.slice(0, 100) || "image",
-                image: blob,
-              },
-            ],
+            images: uploads.map((blob, idx) => ({
+              alt: text.slice(0, 100) || `image-${idx + 1}`,
+              image: blob,
+            })),
           };
         }
       }
