@@ -583,13 +583,13 @@ export default function Composer({
           }}
         />
         {images.length > 0 && (
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3">
             {images.map((img, idx) => (
-              <div key={idx} className="relative space-y-1">
+              <div key={idx} className="relative space-y-2">
                 <img
                   src={img.data}
-                  alt={img.alt || img.name}
-                  className="h-24 w-full object-cover rounded border border-gray-200"
+                  alt={img.alt || img.name || `Image ${idx + 1}`}
+                  className="w-full max-h-48 object-cover rounded border border-gray-200"
                 />
                 <input
                   type="text"
@@ -600,7 +600,7 @@ export default function Composer({
                     setImages(next);
                   }}
                   placeholder="Alt text"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 shadow-sm"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 shadow-sm"
                 />
                 <button
                   type="button"

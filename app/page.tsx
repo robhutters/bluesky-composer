@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import { contentKey, mergeLocalAndCloud, formatNotesToMarkdown, canExportNotes, sortWithPins } from "./lib/noteUtils";
 import Composer from "./components/Composer";
@@ -9,6 +9,7 @@ import { FloatingProfile } from "./components/FloatingProfile";
 import LogoutButton from "./components/LogoutButton";
 import Image from "next/image";
 import { useAuth } from "./providers/AuthProvider";
+import { loadImagesForKey, saveImagesForKey, deleteImagesForKey } from "./lib/indexedImages";
 
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
@@ -43,11 +44,14 @@ export default function MainPage() {
   const [replyListUri, setReplyListUri] = useState<string>("");
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [editMessage, setEditMessage] = useState<string | null>(null);
+  const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showBanner, setShowBanner] = useState(false);
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const [pinInfo, setPinInfo] = useState<string | null>(null);
   const [giftOfferCode, setGiftOfferCode] = useState<string | null>(null);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const lastStableNotesRef = useRef<any[]>([]);
 
   const scrollToAuth = () => {
     const el = typeof document !== "undefined" ? document.getElementById("login-form") : null;
@@ -208,9 +212,27 @@ export default function MainPage() {
     window.localStorage.setItem(LOCAL_IMAGE_MAP_KEY, JSON.stringify(updated));
   };
 
-  const loadLocalNotes = () => {
+  const loadLocalNotes = async () => {
     const local = getLocalNotes();
-    setNotes(local);
+    const safeLocal = Array.isArray(local) ? local : [];
+    // Optimistically render what's already in localStorage so the list doesn't vanish
+    setNotes(safeLocal);
+    // Hydrate images from IndexedDB in the background
+    const withImages = await Promise.all(
+      safeLocal.map(async (note) => {
+        try {
+          const key = contentKey(note.plaintext);
+          const imgs = await loadImagesForKey(key);
+          if (imgs?.length) {
+            return { ...note, images: imgs, imageData: imgs[0]?.data || note.imageData || null };
+          }
+        } catch {
+          /* ignore and fall back */
+        }
+        return note;
+      })
+    );
+    setNotes(withImages);
   };
 
   const loadLocalMetadata = () => {
@@ -230,34 +252,68 @@ export default function MainPage() {
     }
   };
 
+  const stripImagesForStorage = (note: any) => ({
+    ...note,
+    imageData: null,
+    images: Array.isArray(note.images)
+      ? note.images.map((img: any) => ({ alt: img?.alt || "" }))
+      : [],
+  });
+
+  const persistLocalNotes = (list: any[]) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(list.map(stripImagesForStorage)));
+  };
+
   const addLocalNote = (content: string, images?: { data: string; alt: string }[]) => {
     if (!content) return;
+    const id = Date.now();
     const newNote = {
-      id: Date.now(),
+      id,
       plaintext: content,
       created_at: new Date().toISOString(),
       imageData: images?.[0]?.data || null,
       images: Array.isArray(images) ? images.slice(0, 4) : [],
     };
     setNotes((prev) => {
-      const next = [newNote, ...prev];
+      const base = Array.isArray(prev) ? prev : [];
+      const next = [newNote, ...base];
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+        try {
+          persistLocalNotes(next);
+          saveLocalOrder(next.map((n) => n.id));
+        } catch (err) {
+          console.error("Failed to store note locally", err);
+          setStorageMessage("Local storage is full. Delete a few notes to keep saving.");
+          setTimeout(() => setStorageMessage(null), 4000);
+          return prev;
+        }
+      } else {
+        saveLocalOrder(next.map((n) => n.id));
       }
-      saveLocalOrder(next.map((n) => n.id));
       return next;
     });
     if (images?.length) {
-      saveImageForContent(content, images[0].data);
+      const key = contentKey(content);
+      void saveImagesForKey(key, images.slice(0, 4));
     }
   };
 
-  const attachImages = (arr: any[]) => {
-    const images = getLocalImages();
-    return (arr || []).map((note: any) => {
-      const img = images[contentKey(note.plaintext)];
-      return img ? { ...note, imageData: img } : note;
-    });
+  const attachImages = async (arr: any[]) => {
+    return Promise.all(
+      (arr || []).map(async (note: any) => {
+        try {
+          const key = contentKey(note.plaintext || "");
+          const imgs = await loadImagesForKey(key);
+          if (imgs?.length) {
+            return { ...note, images: imgs, imageData: imgs[0]?.data || note.imageData || null };
+          }
+        } catch {
+          /* ignore */
+        }
+        return note;
+      })
+    );
   };
 
   const applyOrder = (arr: any[]) => {
@@ -265,9 +321,11 @@ export default function MainPage() {
     if (!order.length) return arr;
     const rank = new Map<string, number>();
     order.forEach((id, idx) => rank.set(String(id), idx));
-    return [...arr].sort((a, b) => {
-      const ra = rank.has(String(a.id)) ? rank.get(String(a.id))! : Number.MAX_SAFE_INTEGER;
-      const rb = rank.has(String(b.id)) ? rank.get(String(b.id))! : Number.MAX_SAFE_INTEGER;
+    const safe = Array.isArray(arr) ? arr.filter((n) => n && typeof n.id !== "undefined") : [];
+    if (!safe.length) return arr;
+    return [...safe].sort((a, b) => {
+      const ra = rank.has(String(a.id)) ? (rank.get(String(a.id)) as number) : Number.MAX_SAFE_INTEGER;
+      const rb = rank.has(String(b.id)) ? (rank.get(String(b.id)) as number) : Number.MAX_SAFE_INTEGER;
       return ra - rb;
     });
   };
@@ -334,26 +392,39 @@ export default function MainPage() {
   };
 
   const fetchNotes = useCallback(async () => {
-    if (!user) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    setNotesLoading(true);
+    try {
+      if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
 
-    const res = await fetch("/api/getNotes", {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
+      const res = await fetch("/api/getNotes", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
 
-    if (res.ok) {
+      if (!res.ok) {
+        return;
+      }
       const data = await res.json();
       const local = getLocalNotes();
 
+      const applySafeNotes = (arr: any) => {
+        if (!Array.isArray(arr)) return;
+        setNotes((prev: any[]) => {
+          // Avoid blanking the list while fetch is in flight; keep prior notes if new payload is empty.
+          if (!arr.length && Array.isArray(prev) && prev.length) return prev;
+          return arr;
+        });
+      };
+
       // For Pro, treat cloud as source of truth; use local cache only to push unsynced items once.
       if (isPro) {
-        const filteredCloud = (data || []).filter(
-          (note: any) => !deletedIds.has(String(note.id))
-        );
-        const withImages = attachImages(filteredCloud);
+        const filteredCloud = Array.isArray(data)
+          ? data.filter((note: any) => !deletedIds.has(String(note.id)))
+          : [];
+        const withImages = await attachImages(filteredCloud);
         const ordered = applyOrder(withImages);
-        setNotes(ordered);
+        applySafeNotes(ordered);
 
         // Push any lingering local notes, then clear the local cache so edits don't resurrect old copies.
         if (local.length) {
@@ -365,13 +436,32 @@ export default function MainPage() {
         }
         await fetchMetadata();
       } else {
-        const merged = mergeLocalAndCloud(local, data).filter(
+        const merged = mergeLocalAndCloud(local, Array.isArray(data) ? data : []).filter(
           (note: any) => !deletedIds.has(String(note.id))
         );
-        setNotes(merged);
+        const hydrated = await attachImages(merged);
+        applySafeNotes(hydrated);
       }
+    } finally {
+      setNotesLoading(false);
     }
   }, [deletedIds, isPro, user]);
+
+  useEffect(() => {
+    if (Array.isArray(notes) && notes.length) {
+      lastStableNotesRef.current = notes;
+    } else if (!notesLoading && Array.isArray(notes)) {
+      // if fully loaded and empty, clear cache
+      lastStableNotesRef.current = notes;
+    }
+  }, [notes, notesLoading]);
+
+  const notesForDisplay = useMemo(() => {
+    if (notesLoading && lastStableNotesRef.current.length) {
+      return lastStableNotesRef.current;
+    }
+    return notes;
+  }, [notes, notesLoading]);
 
   const fetchMetadata = async () => {
     if (!user || !isPro) return;
@@ -404,10 +494,13 @@ export default function MainPage() {
     if (!user || !isPro) {
       setNotes((prev: any[]) => {
         const target = prev.find((n) => String(n.id) === String(id));
-        if (target?.plaintext) removeImageForContent(target.plaintext);
+        if (target?.plaintext) {
+          removeImageForContent(target.plaintext);
+          void deleteImagesForKey(contentKey(target.plaintext)).catch(() => {});
+        }
         const next = prev.filter((note) => note.id !== id);
         if (typeof window !== "undefined") {
-          window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+          persistLocalNotes(next);
           saveLocalOrder(next.map((n) => n.id));
         }
         return next;
@@ -442,12 +535,16 @@ export default function MainPage() {
         return next;
       });
       setNotes((prev: any) => {
-        const target = prev.find((n: any) => String(n.id) === String(id));
-        if (target?.plaintext) removeImageForContent(target.plaintext);
-        const next = prev.filter((note: any) => note.id !== id);
+        const base = Array.isArray(prev) ? prev : [];
+        const target = base.find((n: any) => String(n.id) === String(id));
+        if (target?.plaintext) {
+          removeImageForContent(target.plaintext);
+          void deleteImagesForKey(contentKey(target.plaintext)).catch(() => {});
+        }
+        const next = base.filter((note: any) => note && note.id !== undefined && String(note.id) !== String(id));
         // also clear from local cache so mergeLocalAndCloud doesn't resurrect it
         if (typeof window !== "undefined") {
-          window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+          persistLocalNotes(next);
           saveLocalOrder(next.map((n: any) => n.id));
         }
         return next;
@@ -478,11 +575,14 @@ export default function MainPage() {
             ? [{ data: n.imageData, alt: n.imageAlt || "" }]
             : [];
         if (!imgs[index]) return n;
-        imgs[index] = { ...imgs[index], alt };
-        return { ...n, images: imgs, imageData: imgs[0]?.data || n.imageData || null };
+        const data = (imgs as any)[index].data;
+        imgs[index] = { ...imgs[index], alt, data };
+        const key = contentKey(n.plaintext || "");
+        void saveImagesForKey(key, imgs as any).catch(() => {});
+        return { ...n, images: imgs, imageData: (imgs as any)[0]?.data || n.imageData || null };
       });
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(updated));
+        persistLocalNotes(updated);
       }
       return updated;
     });
@@ -509,7 +609,7 @@ export default function MainPage() {
           String(n.id) === String(id) ? { ...n, plaintext: safe } : n
         );
         if (typeof window !== "undefined") {
-          window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+          persistLocalNotes(next);
         }
         return next;
       });
@@ -569,7 +669,7 @@ export default function MainPage() {
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
       if ((!user || !isPro) && typeof window !== "undefined") {
-        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+        persistLocalNotes(next);
       }
       saveLocalOrder(next.map((n) => n.id));
       return next;
@@ -587,7 +687,7 @@ export default function MainPage() {
       const [moved] = next.splice(idx, 1);
       next.splice(targetIdx, 0, moved);
       if ((!user || !isPro) && typeof window !== "undefined") {
-        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(next));
+        persistLocalNotes(next);
       }
       saveLocalOrder(next.map((n) => n.id));
       return next;
@@ -716,7 +816,7 @@ export default function MainPage() {
         const data = await refetch.json();
         // After push, rely on cloud as the source of truth, but reattach local-only images.
         const filtered = (data || []).filter((n: any) => !deletedIds.has(String(n.id)));
-        const withImages = attachImages(filtered);
+        const withImages = await attachImages(filtered);
         const ordered = applyOrder(withImages);
         setNotes(ordered);
         if (pushedCount > 0) {
@@ -728,11 +828,11 @@ export default function MainPage() {
 
   // Preserve manual order; only lift pinned items to the top while keeping relative order
   const sortedNotes = useMemo(() => {
-    const sorted = sortWithPins(notes, metadata);
+    const sorted = sortWithPins(notesForDisplay, metadata);
     // keep order persisted for consistency across refreshes
     saveLocalOrder(sorted.map((n) => n.id));
     return sorted;
-  }, [notes, metadata]);
+  }, [notesForDisplay, metadata]);
 
   const pinnedCount = useMemo(
     () => sortedNotes.filter((n) => metadata[String(n.id)]?.pinned).length,
@@ -931,9 +1031,9 @@ export default function MainPage() {
             </button>
           </div>
         )}
-        {(threadMessage || exportMessage || deleteMessage || editMessage) && (
+        {(threadMessage || exportMessage || deleteMessage || editMessage || storageMessage) && (
           <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
-            {[threadMessage, exportMessage, deleteMessage, editMessage]
+            {[threadMessage, exportMessage, deleteMessage, editMessage, storageMessage]
               .filter(Boolean)
               .map((msg, idx) => {
                 const text = String(msg);

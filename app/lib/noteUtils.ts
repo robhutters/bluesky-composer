@@ -102,7 +102,9 @@ export const moveRelativeInList = (list: any[], id: string | number, direction: 
 export const sortWithPins = (notes: any[], metadata: Record<string, { pinned?: boolean }>) => {
   const pinned: any[] = [];
   const regular: any[] = [];
+  if (!Array.isArray(notes)) return [];
   for (const n of notes) {
+    if (!n || typeof n.id === "undefined") continue;
     const isPinned = metadata[String(n.id)]?.pinned;
     if (isPinned) pinned.push(n);
     else regular.push(n);
