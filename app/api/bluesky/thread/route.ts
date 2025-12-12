@@ -82,10 +82,15 @@ export async function POST(req: Request) {
       const text = typeof post?.text === "string" ? post.text : "";
       const imgArray: { data: string; alt?: string }[] = Array.isArray(post?.images)
         ? post.images
-            .map((img: any) =>
-              typeof img === "string" ? { data: img, alt: undefined } : { data: img?.data, alt: img?.alt }
+            .map(
+              (img: any): { data: string; alt?: string } | null =>
+                typeof img === "string"
+                  ? { data: img, alt: undefined }
+                  : typeof img?.data === "string"
+                    ? { data: img.data, alt: img?.alt }
+                    : null
             )
-            .filter((img) => typeof img.data === "string")
+            .filter((img): img is { data: string; alt?: string } => !!img && typeof img.data === "string")
             .slice(0, 4)
         : post?.imageData
           ? [{ data: post.imageData, alt: undefined }]
