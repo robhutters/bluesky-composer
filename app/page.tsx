@@ -969,10 +969,14 @@ export default function MainPage() {
         {user ? <div className="mt-8 mx-auto"><LogoutButton /></div> : null }
       {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
       {!user && (
-        <div className="mb-3 w-full flex justify-center">
+        <div className="mb-3 w-full flex flex-wrap gap-2 justify-center">
           <div className="inline-flex items-center gap-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
             <span className="h-2 w-2 rounded-full bg-rose-500 inline-block" />
             Try it for free without signing in!
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-sky-500 inline-block" />
+            Grab an app password to post directly to BlueSky!
           </div>
         </div>
       )}

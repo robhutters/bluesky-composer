@@ -448,9 +448,18 @@ export default function Composer({
                 className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
               />
             </div>
-            <p className="text-[11px] text-blue-700">
-              Optional: add your Bluesky handle + <strong>app password</strong> (not your regular login password) to post directly to your timeline. Stored only in your browser; clear the fields to remove.
-            </p>
+          <p className="text-[11px] text-blue-700">
+            Optional: add your Bluesky handle + <strong>app password</strong> (not your regular login password) to post directly to your timeline. Get an app password from{" "}
+            <a
+              href="https://bsky.app/settings/app-passwords"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              bsky.app/settings/app-passwords
+            </a>
+            . Stored only in your browser; clear the fields to remove.
+          </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
