@@ -16,7 +16,7 @@ export default function Composer({
   proCheckoutUrl,
 }: {
   onNoteSaved: () => void;
-  onLocalSave: (content: string, imageData?: string | null) => void;
+  onLocalSave: (content: string, images?: { data: string; alt: string }[]) => void;
   user: any;
   isPro: boolean;
   proCheckoutUrl?: string;
@@ -178,7 +178,10 @@ export default function Composer({
     if (!safe) return;
     const canUseCloud = user && isPro;
     // Always keep a local copy
-    onLocalSave(safe, images[0]?.data || null);
+    onLocalSave(
+      safe,
+      images.map((img) => ({ data: img.data, alt: img.alt }))
+    );
     if (visitorId) {
       const now = Date.now();
       if (now - lastSavePingRef.current > 5000) {
@@ -231,7 +234,10 @@ export default function Composer({
     try {
       const canUseCloud = user && isPro;
       // Always save locally
-      onLocalSave(safe, images[0]?.data || null);
+      onLocalSave(
+        safe,
+        images.map((img) => ({ data: img.data, alt: img.alt }))
+      );
       if (visitorId) {
         const now = Date.now();
         if (now - lastSavePingRef.current > 5000) {
@@ -563,7 +569,7 @@ export default function Composer({
                 }
                 const reader = new FileReader();
                 reader.onload = () =>
-                  resolve({ data: reader.result as string, name: file.name, alt: file.name });
+                  resolve({ data: reader.result as string, name: file.name, alt: "" });
                 reader.onerror = () => resolve(null);
                 reader.readAsDataURL(file);
               });
@@ -571,7 +577,7 @@ export default function Composer({
             Promise.all(chosen.map(readFile)).then((results) => {
               const valid = results
                 .filter(Boolean)
-                .map((r) => ({ ...r!, alt: r?.name || "" })) as { data: string; name: string; alt: string }[];
+                .map((r) => ({ ...r!, alt: "" })) as { data: string; name: string; alt: string }[];
               setImages([...current, ...valid].slice(0, max));
             });
           }}

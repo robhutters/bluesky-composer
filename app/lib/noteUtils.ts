@@ -26,9 +26,13 @@ export const mergeLocalAndCloud = (localNotes: any[], cloudNotes: any[]) => {
         ...existing,
         ...note,
         imageData: note.imageData ?? existing.imageData ?? null,
+        images: Array.isArray(note.images) ? note.images : existing.images ?? [],
       });
     } else {
-      byId.set(key, note);
+      byId.set(key, {
+        ...note,
+        images: Array.isArray(note.images) ? note.images : [],
+      });
     }
   }
 
@@ -43,9 +47,13 @@ export const mergeLocalAndCloud = (localNotes: any[], cloudNotes: any[]) => {
         ...note,
         id: existing.id, // keep authoritative id (cloud) to avoid UUID/type clashes
         imageData: note.imageData ?? existing.imageData ?? null,
+        images: Array.isArray(note.images) ? note.images : existing.images ?? [],
       });
     } else {
-      byContent.set(key, note);
+      byContent.set(key, {
+        ...note,
+        images: Array.isArray(note.images) ? note.images : [],
+      });
     }
   }
 
@@ -53,7 +61,7 @@ export const mergeLocalAndCloud = (localNotes: any[], cloudNotes: any[]) => {
 };
 
 export const formatNotesToMarkdown = (
-  notes: Array<{ id: any; plaintext: string; created_at?: string; imageData?: string | null }>,
+  notes: Array<{ id: any; plaintext: string; created_at?: string; imageData?: string | null; images?: { data: string; alt?: string }[] }>,
   metadata: Record<string, { tags?: string[] }> = {}
 ) => {
   return notes
@@ -61,7 +69,10 @@ export const formatNotesToMarkdown = (
       const timestamp = note.created_at ? new Date(note.created_at).toLocaleString() : "";
       const tags = metadata[String(note.id)]?.tags || [];
       const tagsLine = tags.length ? `\n**Tags:** ${tags.join(", ")}` : "";
-      const imageSection = note.imageData ? `\n\n![Image for note ${idx + 1}](${note.imageData})` : "";
+      const images = Array.isArray(note.images) && note.images.length ? note.images : note.imageData ? [{ data: note.imageData }] : [];
+      const imageSection = images
+        .map((img, imgIdx) => `\n\n![Image ${imgIdx + 1} for note ${idx + 1}](${img.data})${img.alt ? `\nAlt: ${img.alt}` : ""}`)
+        .join("");
       return `## Note ${idx + 1}\n${timestamp ? `**Created:** ${timestamp}` : ""}${tagsLine}\n\n${note.plaintext || ""}${imageSection}\n`;
     })
     .join("\n---\n\n");

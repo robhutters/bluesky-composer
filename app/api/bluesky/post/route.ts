@@ -3,6 +3,14 @@ import { buildAllow } from "@/app/lib/threadgate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Allow larger payloads for image uploads (base64). Default ~4MB can be too small for 4 images.
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "12mb",
+    },
+  },
+};
 
 function parseDataUrl(dataUrl: string) {
   const match = dataUrl.match(/^data:(.*);base64,(.*)$/);

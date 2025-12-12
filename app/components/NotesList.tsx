@@ -8,6 +8,7 @@ type NotesListProps = {
   onReorder: (fromId: string | number, toId: string | number) => void;
   onMoveRelative: (id: string | number, direction: "up" | "down") => void;
   onUpdate: (id: string | number, text: string) => Promise<void> | void;
+  onUpdateImageAlt?: (id: string | number, index: number, alt: string) => void;
   metadata: Record<string, { pinned: boolean; tags: string[] }>;
   onTogglePin: (id: string | number) => void;
   onAddTag: (id: string | number, tag: string) => void;
@@ -25,6 +26,7 @@ export default function NotesList({
   onReorder,
   onMoveRelative,
   onUpdate,
+  onUpdateImageAlt,
   metadata,
   onTogglePin,
   onAddTag,
@@ -211,15 +213,34 @@ export default function NotesList({
                   {note.plaintext}
                 </p>
               )}
-              {note.imageData && (
-                <div className="mt-2">
-                  <img
-                    src={note.imageData}
-                    alt="Attached"
-                    className="max-h-40 rounded border border-gray-200"
-                  />
-                </div>
-              )}
+              {(() => {
+                const imgs = Array.isArray(note.images) && note.images.length
+                  ? note.images.slice(0, 4)
+                  : note.imageData
+                    ? [{ data: note.imageData, alt: note.imageAlt || "" }]
+                    : [];
+                if (!imgs.length) return null;
+                return (
+                  <div className="mt-3 grid grid-cols-1 gap-3">
+                    {imgs.map((img: any, idx: number) => (
+                      <div key={`${note.id}-img-${idx}`} className="space-y-2">
+                        <img
+                          src={img.data}
+                          alt={img.alt || `Attached image ${idx + 1}`}
+                          className="w-full max-h-48 rounded border border-gray-200 object-cover"
+                        />
+                        <input
+                          type="text"
+                          value={img.alt || ""}
+                          onChange={(e) => onUpdateImageAlt && onUpdateImageAlt(note.id, idx, e.target.value)}
+                          placeholder="Alt text"
+                          className="w-full rounded border border-gray-300 px-3 py-2 text-xs text-gray-800 shadow-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {meta.tags.map((tag) => (
                   <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">

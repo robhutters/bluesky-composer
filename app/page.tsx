@@ -230,13 +230,14 @@ export default function MainPage() {
     }
   };
 
-  const addLocalNote = (content: string, imageData?: string | null) => {
+  const addLocalNote = (content: string, images?: { data: string; alt: string }[]) => {
     if (!content) return;
     const newNote = {
       id: Date.now(),
       plaintext: content,
       created_at: new Date().toISOString(),
-      imageData: imageData || null,
+      imageData: images?.[0]?.data || null,
+      images: Array.isArray(images) ? images.slice(0, 4) : [],
     };
     setNotes((prev) => {
       const next = [newNote, ...prev];
@@ -246,8 +247,8 @@ export default function MainPage() {
       saveLocalOrder(next.map((n) => n.id));
       return next;
     });
-    if (imageData) {
-      saveImageForContent(content, imageData);
+    if (images?.length) {
+      saveImageForContent(content, images[0].data);
     }
   };
 
@@ -465,6 +466,26 @@ export default function MainPage() {
     } else {
       console.error("Failed to delete note");
     }
+  };
+
+  const updateNoteImageAlt = (noteId: string | number, index: number, alt: string) => {
+    setNotes((prev: any[]) => {
+      const updated = prev.map((n) => {
+        if (String(n.id) !== String(noteId)) return n;
+        const imgs = Array.isArray(n.images)
+          ? [...n.images]
+          : n.imageData
+            ? [{ data: n.imageData, alt: n.imageAlt || "" }]
+            : [];
+        if (!imgs[index]) return n;
+        imgs[index] = { ...imgs[index], alt };
+        return { ...n, images: imgs, imageData: imgs[0]?.data || n.imageData || null };
+      });
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
 
   const updateNoteContent = async (id: string | number, newText: string) => {
@@ -997,6 +1018,7 @@ export default function MainPage() {
         onReorder={reorderNotes}
         onMoveRelative={moveRelative}
         onUpdate={updateNoteContent}
+        onUpdateImageAlt={updateNoteImageAlt}
         metadata={metadata}
         onTogglePin={togglePin}
         onAddTag={addTag}
