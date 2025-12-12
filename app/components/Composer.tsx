@@ -562,7 +562,8 @@ export default function Composer({
                   return;
                 }
                 const reader = new FileReader();
-                reader.onload = () => resolve({ data: reader.result as string, name: file.name });
+                reader.onload = () =>
+                  resolve({ data: reader.result as string, name: file.name, alt: file.name });
                 reader.onerror = () => resolve(null);
                 reader.readAsDataURL(file);
               });

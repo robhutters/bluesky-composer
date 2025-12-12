@@ -49,7 +49,10 @@ export async function POST(req: Request) {
                   ? { data: img.data, alt: img?.alt }
                   : null
           )
-          .filter((img): img is { data: string; alt?: string } => !!img && typeof img.data === "string")
+          .filter(
+            (img: { data: string; alt?: string } | null): img is { data: string; alt?: string } =>
+              !!img && typeof img.data === "string"
+          )
           .slice(0, 4)
       : [];
     if (imageArray.some((img) => img.data.startsWith("data:image/gif"))) {
