@@ -29,7 +29,7 @@ export default function Composer({
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const lastPingRef = useRef<number>(0);
   const lastSavePingRef = useRef<number>(0);
-  const [images, setImages] = useState<{ data: string; name: string; alt: string }[]>([]);
+  const [images, setImages] = useState<{ data: string; name: string; alt: string; width?: number; height?: number }[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyAppPassword, setBskyAppPassword] = useState("");
@@ -302,7 +302,15 @@ export default function Composer({
     setPosting(true);
     setPostMessage(null);
     try {
-      const res = await fetch("/api/bluesky/post-large", {
+      const totalBytes = images.reduce((sum, img) => sum + dataUrlSizeBytes(img.data), 0);
+      if (totalBytes > 3_600_000) {
+        setPostMessage("Images are still too large; try fewer or smaller images.");
+        setTimeout(() => setPostMessage(null), 4000);
+        setPosting(false);
+        return;
+      }
+
+      const res = await fetch("/api/bluesky/post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -327,7 +335,13 @@ export default function Composer({
   };
 
   // Downsize/compress images client-side to reduce 413 errors on upload.
-  const compressFile = (file: File): Promise<{ data: string; name: string; alt: string } | null> => {
+  const dataUrlSizeBytes = (dataUrl: string) => {
+    // rough size calculation for base64 data URLs
+    const base64 = dataUrl.split(",")[1] || "";
+    return Math.floor((base64.length * 3) / 4);
+  };
+
+  const compressFile = (file: File): Promise<{ data: string; name: string; alt: string; width: number; height: number } | null> => {
     return new Promise((resolve) => {
       const mime = (file.type || "").toLowerCase();
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
@@ -339,23 +353,40 @@ export default function Composer({
       reader.onload = () => {
         const img = new Image();
         img.onload = () => {
-          const MAX_DIM = 1200;
-          let { width, height } = img;
-          if (width > MAX_DIM || height > MAX_DIM) {
-            const scale = Math.min(MAX_DIM / width, MAX_DIM / height);
-            width = Math.round(width * scale);
-            height = Math.round(height * scale);
+          const tryRender = (maxDim: number, quality: number) => {
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              const scale = Math.min(maxDim / width, maxDim / height);
+              width = Math.round(width * scale);
+              height = Math.round(height * scale);
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return null;
+            ctx.drawImage(img, 0, 0, width, height);
+            const outMime = mime === "image/png" ? "image/png" : "image/jpeg";
+            const dataUrl = canvas.toDataURL(outMime, quality);
+            return { dataUrl, width, height };
+          };
+
+          // First attempt
+          const first = tryRender(900, mime === "image/png" ? 0.75 : 0.55);
+          if (!first) return resolve(null);
+          let candidate = first;
+          let size = dataUrlSizeBytes(first.dataUrl);
+          if (size > 900_000) {
+            const second = tryRender(750, mime === "image/png" ? 0.65 : 0.4);
+            if (!second) return resolve(null);
+            candidate = second;
+            size = dataUrlSizeBytes(second.dataUrl);
+            if (size > 950_000) {
+              // still too large; reject
+              return resolve(null);
+            }
           }
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return resolve(null);
-          ctx.drawImage(img, 0, 0, width, height);
-          const outMime = mime === "image/png" ? "image/png" : "image/jpeg";
-          const quality = outMime === "image/jpeg" ? 0.72 : undefined;
-          const dataUrl = canvas.toDataURL(outMime, quality);
-          resolve({ data: dataUrl, name: file.name, alt: "" });
+          resolve({ data: candidate.dataUrl, name: file.name, alt: "", width: candidate.width, height: candidate.height });
         };
         img.onerror = () => resolve(null);
         img.src = reader.result as string;
@@ -598,9 +629,11 @@ export default function Composer({
             const chosen = files.slice(0, slots);
 
             Promise.all(chosen.map(compressFile)).then((results) => {
-              const valid = results
-                .filter(Boolean)
-                .map((r) => ({ ...r!, alt: "" })) as { data: string; name: string; alt: string }[];
+              const valid = results.filter(Boolean) as { data: string; name: string; alt: string; width?: number; height?: number }[];
+              if (valid.length < chosen.length) {
+                setFlashMessage("One or more images were too large to compress under 1MB.");
+                setTimeout(() => setFlashMessage(null), 4000);
+              }
               setImages([...current, ...valid].slice(0, max));
             });
           }}
