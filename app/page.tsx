@@ -1106,6 +1106,17 @@ export default function MainPage() {
         isPro={plan === "pro"}
         proCheckoutUrl={process.env.NEXT_PUBLIC_PRO_CHECKOUT_URL || ""}
       />
+      {!user && (
+        <div className="mt-4 mb-2 flex justify-center">
+          <button
+            type="button"
+            onClick={scrollToAuth}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
+          >
+            Sign in to unlock PRO
+          </button>
+        </div>
+      )}
       {pinnedCount > 0 && (
         <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {pinInfo || "Pinned notes stay at the top. Unpin to reorder them. Dragging is only available for unpinned notes."}
@@ -1282,15 +1293,6 @@ export default function MainPage() {
             <li>Write, copy, and delete notes without having to sign in</li>
             <li>Post directly to BlueSky (with the exception of Threads) with a local-only app password</li>
           </ul>
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={scrollToAuth}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Sign in to unlock PRO
-            </button>
-          </div>
         </div>
         <div className="p-4 border mt-12 rounded bg-yellow-50">
             <p className="text-sm">

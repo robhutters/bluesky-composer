@@ -54,6 +54,8 @@ export default function Composer({
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("bsky-handle");
       window.localStorage.removeItem("bsky-app-password");
+      window.sessionStorage.removeItem("bsky-handle");
+      window.sessionStorage.removeItem("bsky-app-password");
     }
     setPostMessage("Bluesky credentials cleared.");
     setTimeout(() => setPostMessage(null), 2500);
@@ -83,14 +85,15 @@ export default function Composer({
       const storedPass = window.localStorage.getItem("bsky-app-password");
       if (storedHandle) setBskyHandle(storedHandle);
       if (storedPass) setBskyAppPassword(storedPass);
-      if (storedHandle && storedPass) {
-        setBskyLinked(true);
-        setShowBskyForm(false);
-      }
     } catch {
       /* ignore */
     }
   }, []);
+
+  // Keep linked flag in sync with creds in state so a logout cannot immediately flip back.
+  useEffect(() => {
+    setBskyLinked(Boolean(bskyHandle && bskyAppPassword));
+  }, [bskyHandle, bskyAppPassword]);
 
   const saveBskyCreds = () => {
     if (!bskyHandle.trim() || !bskyAppPassword.trim()) {
@@ -477,14 +480,6 @@ export default function Composer({
             >
               Manage
             </button>
-            <button
-              type="button"
-              onClick={clearBskyCreds}
-              className="px-2 py-1 text-xs rounded border border-sky-200 bg-white text-sky-700 font-semibold hover:bg-sky-50 transition"
-              title="Clear stored Bluesky credentials"
-            >
-              Logout
-            </button>
           </div>
         )}
         {!isPro && user ? (
@@ -543,6 +538,14 @@ export default function Composer({
                 className="px-3 py-2 text-xs font-semibold rounded bg-sky-600 text-white hover:bg-sky-700 transition"
               >
                 Save Bluesky login
+              </button>
+              <button
+                type="button"
+                onClick={clearBskyCreds}
+                className="px-3 py-2 text-xs font-semibold rounded border border-sky-200 bg-white text-sky-700 hover:bg-sky-50 transition"
+                title="Clear stored Bluesky credentials"
+              >
+                Logout of Bluesky
               </button>
               <button
                 type="button"
@@ -718,15 +721,15 @@ export default function Composer({
         <div className="flex gap-2 justify-end flex-wrap">
           <button
             type="button"
-            onClick={() => {
-              setText("");
-              setImages([]);
-              if (fileInputRef.current) fileInputRef.current.value = "";
-            }}
-            className="px-3 py-2 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Clear note
-          </button>
+          onClick={() => {
+            setText("");
+            setImages([]);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          }}
+          className="px-3 py-2 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50"
+        >
+          Clear input field
+        </button>
           <button
             onClick={postToBluesky}
             disabled={text.length === 0 || posting}
