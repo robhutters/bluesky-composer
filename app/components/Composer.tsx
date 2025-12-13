@@ -302,7 +302,7 @@ export default function Composer({
     setPosting(true);
     setPostMessage(null);
     try {
-      const res = await fetch("/api/bluesky/post", {
+      const res = await fetch("/api/bluesky/post-large", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
