@@ -326,6 +326,45 @@ export default function Composer({
     }
   };
 
+  // Downsize/compress images client-side to reduce 413 errors on upload.
+  const compressFile = (file: File): Promise<{ data: string; name: string; alt: string } | null> => {
+    return new Promise((resolve) => {
+      const mime = (file.type || "").toLowerCase();
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      const allowedTypes = ["image/png", "image/jpeg", "image/jpg"];
+      const extAllowed = ["png", "jpg", "jpeg"].includes(ext);
+      if (!allowedTypes.includes(mime) || !extAllowed) return resolve(null);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_DIM = 1200;
+          let { width, height } = img;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            const scale = Math.min(MAX_DIM / width, MAX_DIM / height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return resolve(null);
+          ctx.drawImage(img, 0, 0, width, height);
+          const outMime = mime === "image/png" ? "image/png" : "image/jpeg";
+          const quality = outMime === "image/jpeg" ? 0.72 : undefined;
+          const dataUrl = canvas.toDataURL(outMime, quality);
+          resolve({ data: dataUrl, name: file.name, alt: "" });
+        };
+        img.onerror = () => resolve(null);
+        img.src = reader.result as string;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  };
+
 
   const startCheckout = async () => {
     if (!user) {
@@ -558,23 +597,7 @@ export default function Composer({
             const slots = Math.max(0, max - current.length);
             const chosen = files.slice(0, slots);
 
-            const readFile = (file: File) =>
-              new Promise<{ data: string; name: string; alt: string } | null>((resolve) => {
-                const mime = (file.type || "").toLowerCase();
-                const ext = file.name.split(".").pop()?.toLowerCase() || "";
-                const extAllowed = ["png", "jpg", "jpeg"].includes(ext);
-                if (!allowedTypes.includes(mime) || !extAllowed) {
-                  resolve(null);
-                  return;
-                }
-                const reader = new FileReader();
-                reader.onload = () =>
-                  resolve({ data: reader.result as string, name: file.name, alt: "" });
-                reader.onerror = () => resolve(null);
-                reader.readAsDataURL(file);
-              });
-
-            Promise.all(chosen.map(readFile)).then((results) => {
+            Promise.all(chosen.map(compressFile)).then((results) => {
               const valid = results
                 .filter(Boolean)
                 .map((r) => ({ ...r!, alt: "" })) as { data: string; name: string; alt: string }[];
