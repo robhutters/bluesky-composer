@@ -265,37 +265,61 @@ export default function MainPage() {
     window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(list.map(stripImagesForStorage)));
   };
 
+  const dedupeByContent = (list: any[]) => {
+    const seen = new Set<string>();
+    const result: any[] = [];
+    for (const note of list || []) {
+      const key = contentKey(note?.plaintext || "");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(note);
+    }
+    return result;
+  };
+
   const addLocalNote = (content: string, images?: { data: string; alt: string }[]) => {
     if (!content) return;
-    const id = Date.now();
-    const newNote = {
-      id,
-      plaintext: content,
-      created_at: new Date().toISOString(),
-      imageData: images?.[0]?.data || null,
-      images: Array.isArray(images) ? images.slice(0, 4) : [],
-    };
+    const key = contentKey(content);
     setNotes((prev) => {
       const base = Array.isArray(prev) ? prev : [];
-      const next = [newNote, ...base];
+      const existingIdx = base.findIndex((n: any) => contentKey(n.plaintext) === key);
+      const now = Date.now();
+      const newNote = {
+        id: existingIdx >= 0 ? base[existingIdx].id : now,
+        plaintext: content,
+        created_at: existingIdx >= 0 ? base[existingIdx].created_at : new Date().toISOString(),
+        imageData: images?.[0]?.data || null,
+        images: Array.isArray(images) ? images.slice(0, 4) : [],
+      };
+      let next;
+      if (existingIdx >= 0) {
+        next = [...base];
+        next[existingIdx] = newNote;
+      } else {
+        next = [newNote, ...base];
+      }
       if (typeof window !== "undefined") {
         try {
-          persistLocalNotes(next);
-          saveLocalOrder(next.map((n) => n.id));
+          const deduped = dedupeByContent(next);
+          persistLocalNotes(deduped);
+          saveLocalOrder(deduped.map((n) => n.id));
+          return deduped;
         } catch (err) {
           console.error("Failed to store note locally", err);
           setStorageMessage("Local storage is full. Delete a few notes to keep saving.");
           setTimeout(() => setStorageMessage(null), 4000);
-          return prev;
+          return base;
         }
       } else {
-        saveLocalOrder(next.map((n) => n.id));
+        const deduped = dedupeByContent(next);
+        saveLocalOrder(deduped.map((n) => n.id));
+        return deduped;
       }
       return next;
     });
     if (images?.length) {
-      const key = contentKey(content);
-      void saveImagesForKey(key, images.slice(0, 4));
+      const keyStr = contentKey(content);
+      void saveImagesForKey(keyStr, images.slice(0, 4));
     }
   };
 
@@ -410,10 +434,11 @@ export default function MainPage() {
 
       const applySafeNotes = (arr: any) => {
         if (!Array.isArray(arr)) return;
+        const deduped = dedupeByContent(arr);
         setNotes((prev: any[]) => {
           // Avoid blanking the list while fetch is in flight; keep prior notes if new payload is empty.
-          if (!arr.length && Array.isArray(prev) && prev.length) return prev;
-          return arr;
+          if (!deduped.length && Array.isArray(prev) && prev.length) return prev;
+          return deduped;
         });
       };
 
@@ -812,15 +837,16 @@ export default function MainPage() {
     const refetch = await fetch("/api/getNotes", {
       headers: { Authorization: `Bearer ${token}` },
     });
-      if (refetch.ok) {
-        const data = await refetch.json();
-        // After push, rely on cloud as the source of truth, but reattach local-only images.
-        const filtered = (data || []).filter((n: any) => !deletedIds.has(String(n.id)));
-        const withImages = await attachImages(filtered);
-        const ordered = applyOrder(withImages);
-        setNotes(ordered);
-        if (pushedCount > 0) {
-          setSyncMessage(`Synced ${pushedCount} local note(s) to cloud`);
+    if (refetch.ok) {
+      const data = await refetch.json();
+      // After push, rely on cloud as the source of truth, but reattach local-only images.
+      const filtered = (data || []).filter((n: any) => !deletedIds.has(String(n.id)));
+      const withImages = await attachImages(filtered);
+      const ordered = applyOrder(withImages);
+      const deduped = dedupeByContent(Array.isArray(ordered) ? ordered : []);
+      setNotes(deduped);
+      if (pushedCount > 0) {
+        setSyncMessage(`Synced ${pushedCount} local note(s) to cloud`);
         setTimeout(() => setSyncMessage(null), 4000);
       }
     }

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { dataUrlSizeBytes } from "../lib/imageUtils";
 
 const MAX_CHARACTERS = 300;
 const LOCAL_DRAFT_KEY = "bsky-composer-draft";
@@ -85,15 +86,14 @@ export default function Composer({
       const storedPass = window.localStorage.getItem("bsky-app-password");
       if (storedHandle) setBskyHandle(storedHandle);
       if (storedPass) setBskyAppPassword(storedPass);
+      if (storedHandle && storedPass) {
+        setBskyLinked(true);
+        setShowBskyForm(false);
+      }
     } catch {
       /* ignore */
     }
   }, []);
-
-  // Keep linked flag in sync with creds in state so a logout cannot immediately flip back.
-  useEffect(() => {
-    setBskyLinked(Boolean(bskyHandle && bskyAppPassword));
-  }, [bskyHandle, bskyAppPassword]);
 
   const saveBskyCreds = () => {
     if (!bskyHandle.trim() || !bskyAppPassword.trim()) {
@@ -337,13 +337,6 @@ export default function Composer({
     }
   };
 
-  // Downsize/compress images client-side to reduce 413 errors on upload.
-  const dataUrlSizeBytes = (dataUrl: string) => {
-    // rough size calculation for base64 data URLs
-    const base64 = dataUrl.split(",")[1] || "";
-    return Math.floor((base64.length * 3) / 4);
-  };
-
   const compressFile = (file: File): Promise<{ data: string; name: string; alt: string; width: number; height: number } | null> => {
     return new Promise((resolve) => {
       const mime = (file.type || "").toLowerCase();
@@ -480,6 +473,13 @@ export default function Composer({
             >
               Manage
             </button>
+            <button
+              type="button"
+              onClick={() => setShowEmojis((v) => !v)}
+              className="px-2 py-1 text-xs font-semibold rounded border border-gray-200 bg-white hover:bg-gray-100"
+            >
+              😊 Emoji
+            </button>
           </div>
         )}
         {!isPro && user ? (
@@ -565,13 +565,6 @@ export default function Composer({
         <label className="block text-sm font-medium text-gray-700">
           Your note (max {MAX_CHARACTERS} chars). Auto-saves when limit is reached.
         </label>
-        <button
-          type="button"
-          onClick={() => setShowEmojis((v) => !v)}
-          className="px-2 py-1 text-xs font-semibold rounded border border-gray-200 bg-white hover:bg-gray-100"
-        >
-          😊 Emoji
-        </button>
       </div>
       {showEmojis && (
         <div className="mb-2 rounded border border-gray-200 bg-white p-2 shadow-sm">
@@ -599,7 +592,7 @@ export default function Composer({
       />
       <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
         <label className="block text-sm font-semibold text-gray-800">
-          Optional images (up to 4, png or jpg):
+          Add up to 4 images [png, jpg]
         </label>
         <div className="flex items-center gap-3">
           <button
