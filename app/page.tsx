@@ -1304,58 +1304,48 @@ export default function MainPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_600px_1fr] gap-6 items-start">
           <div className="space-y-4">
-            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">Selected post</div>
-                  {replyTarget ? (
-                    <>
-                      <div className="font-semibold text-slate-900">
-                        {replyTarget.authorDisplay || replyTarget.authorHandle}
-                      </div>
-                      <div className="text-xs text-slate-500">{replyTarget.authorHandle}</div>
-                      {replyTarget.feedName && (
-                        <div className="text-[11px] text-slate-500">Feed: {replyTarget.feedName}</div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-sm text-slate-600">Select a post from Discover to reply.</div>
-                  )}
-                </div>
-                {replyTarget && (
+            {replyTarget && (
+              <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">Selected post</div>
+                    <div className="font-semibold text-slate-900">
+                      {replyTarget.authorDisplay || replyTarget.authorHandle}
+                    </div>
+                    <div className="text-xs text-slate-500">{replyTarget.authorHandle}</div>
+                    {replyTarget.feedName && (
+                      <div className="text-[11px] text-slate-500">Feed: {replyTarget.feedName}</div>
+                    )}
+                  </div>
                   <button
                     className="text-xs text-slate-600 underline"
                     onClick={() => setReplyTarget(null)}
                   >
                     Clear
                   </button>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap break-words text-slate-800">
+                  {replyTarget.text || "(no text)"}
+                </p>
+                {Array.isArray(replyTarget.images) && replyTarget.images.length > 0 && (
+                  <div className="mt-3 grid grid-cols-1 gap-3">
+                    {replyTarget.images.slice(0, 4).map((img: any, idx: number) => (
+                      <div key={idx} className="relative overflow-hidden rounded border border-sky-100 bg-white">
+                        {img?.thumb ? (
+                          <Image
+                            src={img.thumb}
+                            alt={img.alt || "Discover image"}
+                            width={420}
+                            height={280}
+                            className="w-full h-auto object-cover"
+                          />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-              {replyTarget && (
-                <>
-                  <p className="mt-2 whitespace-pre-wrap break-words text-slate-800">
-                    {replyTarget.text || "(no text)"}
-                  </p>
-                  {Array.isArray(replyTarget.images) && replyTarget.images.length > 0 && (
-                    <div className="mt-3 grid grid-cols-1 gap-3">
-                      {replyTarget.images.slice(0, 4).map((img: any, idx: number) => (
-                        <div key={idx} className="relative overflow-hidden rounded border border-sky-100 bg-white">
-                          {img?.thumb ? (
-                            <Image
-                              src={img.thumb}
-                              alt={img.alt || "Discover image"}
-                              width={420}
-                              height={280}
-                              className="w-full h-auto object-cover"
-                            />
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            )}
           </div>
 
           <div className="space-y-4">
