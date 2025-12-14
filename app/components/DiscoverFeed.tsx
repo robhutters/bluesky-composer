@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 
 type DiscoverItem = {
@@ -22,12 +22,27 @@ export default function DiscoverFeed({
   enabled: boolean;
   onSelect: (item: DiscoverItem) => void;
 }) {
-  const [loading, setLoading] = useState(false);
+  const [loadingTab, setLoadingTab] = useState<FeedTab | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<DiscoverItem[]>([]);
+  const [itemsByTab, setItemsByTab] = useState<Record<FeedTab, DiscoverItem[]>>({
+    discover: [],
+    following: [],
+    mutuals: [],
+  });
   const [showDiscover, setShowDiscover] = useState(true);
   const [activeTab, setActiveTab] = useState<FeedTab>("discover");
-  const [fetchedTabs, setFetchedTabs] = useState<Set<FeedTab>>(new Set());
+  const [cursorByTab, setCursorByTab] = useState<Record<FeedTab, string | undefined>>({
+    discover: undefined,
+    following: undefined,
+    mutuals: undefined,
+  });
+  const [exhausted, setExhausted] = useState<Record<FeedTab, boolean>>({
+    discover: false,
+    following: false,
+    mutuals: false,
+  });
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [pauseAuto, setPauseAuto] = useState(false);
 
   const getAuthHeaders = async () => {
     const handle = typeof window !== "undefined" ? window.localStorage.getItem("bsky-handle") : "";
@@ -74,39 +89,85 @@ export default function DiscoverFeed({
     []
   );
 
-  const fetchDiscover = useCallback(async () => {
-    const genRes = await fetch("https://public.api.bsky.app/xrpc/app.bsky.unspecced.getPopularFeedGenerators?limit=10");
-    if (!genRes.ok) throw new Error("Failed to load Discover feeds");
-    const genData = await genRes.json();
-    const first = Array.isArray(genData?.feeds) && genData.feeds.length ? genData.feeds[0] : null;
-    if (!first?.uri) throw new Error("No Discover feed available");
-    const feedRes = await fetch(
-      `https://public.api.bsky.app/xrpc/app.bsky.feed.getFeed?feed=${encodeURIComponent(first.uri)}&limit=25`
-    );
-    if (!feedRes.ok) {
-      const detail = await feedRes.text().catch(() => "");
-      throw new Error(`Failed to load Discover feed: ${feedRes.status} ${detail}`.trim());
-    }
-    const data = await feedRes.json();
-    return mapFeedItems(data?.feed || [], first.displayName || first.name || "Discover");
-  }, [mapFeedItems]);
+  const fetchDiscover = useCallback(
+    async (cursor?: string) => {
+      // Try authenticated suggested feeds for a more personalized "discover" experience; fall back to public popular feeds.
+      const tryAuthSuggested = async () => {
+        const headers = await getAuthHeaders();
+        const genRes = await fetch(
+          `https://bsky.social/xrpc/app.bsky.feed.getSuggestedFeeds?limit=10`,
+          { headers }
+        );
+        if (!genRes.ok) return null;
+        const genData = await genRes.json();
+        const first = Array.isArray(genData?.feeds) && genData.feeds.length ? genData.feeds[0] : null;
+        if (!first?.uri) return null;
+        const feedRes = await fetch(
+          `https://bsky.social/xrpc/app.bsky.feed.getFeed?feed=${encodeURIComponent(first.uri)}&limit=25${
+            cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""
+          }`,
+          { headers }
+        );
+        if (!feedRes.ok) return null;
+        const data = await feedRes.json();
+        return {
+          items: mapFeedItems(data?.feed || [], first.displayName || first.name || "Discover"),
+          cursor: data?.cursor,
+        };
+      };
 
-  const fetchFollowing = useCallback(async () => {
+      const tryPublicPopular = async () => {
+        const genRes = await fetch(
+          "https://public.api.bsky.app/xrpc/app.bsky.unspecced.getPopularFeedGenerators?limit=10"
+        );
+        if (!genRes.ok) throw new Error("Failed to load Discover feeds");
+        const genData = await genRes.json();
+        const first = Array.isArray(genData?.feeds) && genData.feeds.length ? genData.feeds[0] : null;
+        if (!first?.uri) throw new Error("No Discover feed available");
+        const feedRes = await fetch(
+          `https://public.api.bsky.app/xrpc/app.bsky.feed.getFeed?feed=${encodeURIComponent(first.uri)}&limit=25${
+            cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""
+          }`
+        );
+        if (!feedRes.ok) {
+          const detail = await feedRes.text().catch(() => "");
+          throw new Error(`Failed to load Discover feed: ${feedRes.status} ${detail}`.trim());
+        }
+        const data = await feedRes.json();
+        return {
+          items: mapFeedItems(data?.feed || [], first.displayName || first.name || "Discover"),
+          cursor: data?.cursor,
+        };
+      };
+
+      const authed = await tryAuthSuggested().catch(() => null);
+      if (authed) return authed;
+      return tryPublicPopular();
+    },
+    [getAuthHeaders, mapFeedItems]
+  );
+
+  const fetchFollowing = useCallback(async (cursor?: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch("https://bsky.social/xrpc/app.bsky.feed.getTimeline?limit=25", { headers });
+    const res = await fetch(
+      `https://bsky.social/xrpc/app.bsky.feed.getTimeline?limit=25${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      { headers }
+    );
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       throw new Error(`Failed to load Following: ${res.status} ${detail}`.trim());
     }
     const data = await res.json();
-    return mapFeedItems(data?.feed || [], "Following");
+    return { items: mapFeedItems(data?.feed || [], "Following"), cursor: data?.cursor };
   }, [mapFeedItems]);
 
-  const fetchMutuals = useCallback(async () => {
+  const fetchMutuals = useCallback(async (cursor?: string) => {
     const headers = await getAuthHeaders();
     const mutualsUri = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/mutuals";
     const res = await fetch(
-      `https://bsky.social/xrpc/app.bsky.feed.getFeed?feed=${encodeURIComponent(mutualsUri)}&limit=25`,
+      `https://bsky.social/xrpc/app.bsky.feed.getFeed?feed=${encodeURIComponent(mutualsUri)}&limit=25${
+        cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""
+      }`,
       { headers }
     );
     if (!res.ok) {
@@ -114,36 +175,58 @@ export default function DiscoverFeed({
       throw new Error(`Failed to load Mutuals: ${res.status} ${detail}`.trim());
     }
     const data = await res.json();
-    return mapFeedItems(data?.feed || [], "Mutuals");
+    return { items: mapFeedItems(data?.feed || [], "Mutuals"), cursor: data?.cursor };
   }, [mapFeedItems]);
 
   const fetchTab = useCallback(
-    async (tab: FeedTab) => {
+    async (tab: FeedTab, append = false) => {
       if (!enabled) return;
-      setLoading(true);
+      if (loadingTab === tab) return;
+      setLoadingTab(tab);
       setError(null);
+      if (!append) {
+        setItemsByTab((prev) => ({ ...prev, [tab]: [] }));
+      }
       try {
         let result: DiscoverItem[] = [];
-        if (tab === "discover") result = await fetchDiscover();
-        if (tab === "following") result = await fetchFollowing();
-        if (tab === "mutuals") result = await fetchMutuals();
-        setItems(result);
-        setFetchedTabs((prev) => new Set([...prev, tab]));
+        let nextCursor: string | undefined = undefined;
+        if (tab === "discover") {
+          const { items, cursor } = await fetchDiscover(cursorByTab[tab]);
+          result = items;
+          nextCursor = cursor;
+        }
+        if (tab === "following") {
+          const { items, cursor } = await fetchFollowing(cursorByTab[tab]);
+          result = items;
+          nextCursor = cursor;
+        }
+        if (tab === "mutuals") {
+          const { items, cursor } = await fetchMutuals(cursorByTab[tab]);
+          result = items;
+          nextCursor = cursor;
+        }
+        setItemsByTab((prev) => ({
+          ...prev,
+          [tab]: append ? [...(prev[tab] || []), ...result] : result,
+        }));
+        setCursorByTab((prev) => ({ ...prev, [tab]: nextCursor }));
+        setExhausted((prev) => ({ ...prev, [tab]: !nextCursor }));
       } catch (err: any) {
         setError(err?.message || "Failed to load feed");
       } finally {
-        setLoading(false);
+        setLoadingTab((current) => (current === tab ? null : current));
       }
     },
-    [enabled, fetchDiscover, fetchFollowing, fetchMutuals]
+    [cursorByTab, enabled, fetchDiscover, fetchFollowing, fetchMutuals, loadingTab]
   );
 
   useEffect(() => {
-    if (!enabled) return;
-    if (!fetchedTabs.has(activeTab)) {
-      void fetchTab(activeTab);
-    }
-  }, [activeTab, enabled, fetchTab, fetchedTabs]);
+    if (!enabled || !showDiscover) return;
+    void fetchTab(activeTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, enabled, showDiscover]);
+
+  const items = itemsByTab[activeTab] || [];
 
   const tabLabel = useMemo(
     () => ({
@@ -153,6 +236,41 @@ export default function DiscoverFeed({
     }),
     []
   );
+
+  const scrollEl = scrollRef.current;
+
+  const maybeLoadMore = useCallback(() => {
+    if (!scrollRef.current) return;
+    if (loadingTab === activeTab) return;
+    if (exhausted[activeTab]) return;
+    const el = scrollRef.current;
+    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (remaining < 200) {
+      void fetchTab(activeTab, true);
+    }
+  }, [activeTab, exhausted, fetchTab, loadingTab]);
+
+  useEffect(() => {
+    if (!enabled || !showDiscover) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf: number;
+    const step = () => {
+      if (!el) return;
+      if (!pauseAuto) {
+        el.scrollTop += 1;
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 4 && exhausted[activeTab]) {
+          el.scrollTop = 0;
+        }
+        maybeLoadMore();
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [activeTab, enabled, exhausted, maybeLoadMore, pauseAuto, showDiscover]);
 
   if (!enabled) return null;
 
@@ -191,15 +309,19 @@ export default function DiscoverFeed({
           <div
             className="h-[600px] lg:h-[calc(100vh-240px)] overflow-y-auto p-3 space-y-3 bg-white rounded-b-md"
             style={{ scrollbarGutter: "stable both-edges" }}
+            ref={scrollRef}
+            onMouseEnter={() => setPauseAuto(true)}
+            onMouseLeave={() => setPauseAuto(false)}
+            onScroll={maybeLoadMore}
           >
-            {loading && <div className="text-sm text-slate-500">Loading {tabLabel[activeTab]}…</div>}
+            {loadingTab === activeTab && <div className="text-sm text-slate-500">Loading {tabLabel[activeTab]}…</div>}
             {error && <div className="text-sm text-red-600">{error}</div>}
-            {!loading && !error && items.length === 0 && (
+            {loadingTab !== activeTab && !error && items.length === 0 && (
               <div className="text-sm text-slate-500">No posts found yet.</div>
             )}
-            {items.map((item) => (
+            {items.map((item, idx) => (
               <button
-                key={item.uri}
+                key={`${item.uri || "item"}-${idx}`}
                 className="w-full text-left rounded border border-gray-200 bg-gray-50 hover:bg-gray-100 p-3 shadow-sm"
                 onClick={() => {
                   onSelect(item);
