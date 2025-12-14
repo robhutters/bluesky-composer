@@ -303,6 +303,7 @@ export default function Composer({
       return;
     }
     setPosting(true);
+    setPostMessage("Compressing images, this may take a moment...");
     setPostMessage(null);
     try {
       const totalBytes = images.reduce((sum, img) => sum + dataUrlSizeBytes(img.data), 0);
@@ -624,6 +625,7 @@ export default function Composer({
             const slots = Math.max(0, max - current.length);
             const chosen = files.slice(0, slots);
 
+            setPostMessage("Compressing images, this may take a moment...");
             Promise.all(chosen.map(compressFile)).then((results) => {
               const valid = results.filter(Boolean) as { data: string; name: string; alt: string; width?: number; height?: number }[];
               if (valid.length < chosen.length) {
@@ -631,6 +633,7 @@ export default function Composer({
                 setTimeout(() => setFlashMessage(null), 4000);
               }
               setImages([...current, ...valid].slice(0, max));
+              setPostMessage(null);
             });
           }}
         />
