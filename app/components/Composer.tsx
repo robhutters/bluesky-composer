@@ -31,6 +31,8 @@ export default function Composer({
   const lastPingRef = useRef<number>(0);
   const lastSavePingRef = useRef<number>(0);
   const [images, setImages] = useState<{ data: string; name: string; alt: string; width?: number; height?: number }[]>([]);
+  const [video, setVideo] = useState<{ data: string; name: string; alt: string; width?: number; height?: number; size?: number } | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyAppPassword, setBskyAppPassword] = useState("");
@@ -94,6 +96,14 @@ export default function Composer({
       /* ignore */
     }
   }, []);
+
+  // Clear video selection when not PRO
+  useEffect(() => {
+    if (!isPro) {
+      setVideo(null);
+      if (videoInputRef.current) videoInputRef.current.value = "";
+    }
+  }, [isPro]);
 
   const saveBskyCreds = () => {
     if (!bskyHandle.trim() || !bskyAppPassword.trim()) {
@@ -284,8 +294,12 @@ export default function Composer({
       }
       setText("");
       setImages([]);
+      setVideo(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
+      }
+      if (videoInputRef.current) {
+        videoInputRef.current.value = "";
       }
     } catch (err: any) {
       alert(`Error saving note: ${err.message ?? "Unknown error"}`);
@@ -326,11 +340,23 @@ export default function Composer({
       setPosting(false);
       return;
     }
-    setPostMessage("Compressing images, this may take a moment...");
+    setPostMessage("Processing your request... this may take a moment.");
     try {
+      if (video && !isPro) {
+        setPostMessage("Video posting is a PRO feature. Remove the video or upgrade to PRO.");
+        setTimeout(() => setPostMessage(null), 4000);
+        setPosting(false);
+        return;
+      }
       const totalBytes = images.reduce((sum, img) => sum + dataUrlSizeBytes(img.data), 0);
       if (totalBytes > 3_600_000) {
         setPostMessage("Images are still too large; try fewer or smaller images.");
+        setTimeout(() => setPostMessage(null), 4000);
+        setPosting(false);
+        return;
+      }
+      if (video?.size && video.size > 10 * 1024 * 1024) {
+        setPostMessage("Video too large (limit ~10MB). Please choose a smaller file.");
         setTimeout(() => setPostMessage(null), 4000);
         setPosting(false);
         return;
@@ -344,6 +370,15 @@ export default function Composer({
           appPassword: bskyAppPassword.trim(),
           text: safe,
           images: images.map((img) => ({ data: img.data, alt: img.alt || img.name })),
+          video: video
+            ? {
+                data: video.data,
+                alt: video.alt || "",
+                width: video.width,
+                height: video.height,
+                size: video.size,
+              }
+            : null,
           replyControl,
           replyListUri,
         }),
@@ -647,7 +682,7 @@ export default function Composer({
             const slots = Math.max(0, max - current.length);
             const chosen = files.slice(0, slots);
 
-            setPostMessage("Compressing images, this may take a moment...");
+            setPostMessage("Processing images, this may take a moment...");
             Promise.all(chosen.map(compressFile)).then((results) => {
               const valid = results.filter(Boolean) as { data: string; name: string; alt: string; width?: number; height?: number }[];
               if (valid.length < chosen.length) {
@@ -702,6 +737,89 @@ export default function Composer({
         </p>
       </div>
 
+      {isPro && (
+      <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
+        <label className="block text-sm font-semibold text-gray-800">
+          Add one video [mp4] (max ~10MB)
+        </label>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => videoInputRef.current?.click()}
+            className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-100 hover:shadow-md"
+          >
+            {video ? "Replace video" : "Choose video"}
+          </button>
+          <span className="text-xs text-gray-600">
+            {video ? `${video.name}` : "No video selected"}
+          </span>
+        </div>
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/mp4"
+          className="hidden"
+          onChange={(e) => {
+            const file = (e.target.files || [])[0];
+            if (!file) {
+              setVideo(null);
+              return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+              setPostMessage("Video too large (limit ~10MB). Please choose a smaller file.");
+              setTimeout(() => setPostMessage(null), 4000);
+              setVideo(null);
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+              const url = reader.result as string;
+              const vid = document.createElement("video");
+              vid.preload = "metadata";
+              vid.onloadedmetadata = () => {
+                const width = vid.videoWidth;
+                const height = vid.videoHeight;
+                setVideo({ data: url, name: file.name, alt: "", width, height, size: file.size });
+              };
+              vid.onerror = () => {
+                setVideo(null);
+                setPostMessage("Could not read video metadata.");
+                setTimeout(() => setPostMessage(null), 3000);
+              };
+              vid.src = url;
+            };
+            reader.onerror = () => setVideo(null);
+            reader.readAsDataURL(file);
+          }}
+        />
+        {video && (
+          <div className="space-y-2">
+            <div className="text-xs text-gray-600">Selected: {video.name}</div>
+            <input
+              type="text"
+              value={video.alt}
+              onChange={(e) => setVideo((prev) => (prev ? { ...prev, alt: e.target.value } : prev))}
+              placeholder="Video description (alt)"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 shadow-sm"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setVideo(null);
+                if (videoInputRef.current) videoInputRef.current.value = "";
+              }}
+              className="px-3 py-1.5 text-xs font-semibold rounded border border-red-200 text-red-700 bg-white hover:bg-red-50"
+            >
+              Remove video
+            </button>
+          </div>
+        )}
+        <p className="text-[11px] text-gray-500">
+          Only one video per post. Videos are not saved with notes; they’re sent directly when you post.
+        </p>
+      </div>
+      )}
+
       <div className="mt-3 space-y-3">
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <span
@@ -742,7 +860,9 @@ export default function Composer({
           onClick={() => {
             setText("");
             setImages([]);
+            setVideo(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
+            if (videoInputRef.current) videoInputRef.current.value = "";
           }}
           className="px-3 py-2 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50"
         >

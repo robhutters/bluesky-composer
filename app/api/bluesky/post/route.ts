@@ -12,7 +12,7 @@ function parseDataUrl(dataUrl: string) {
   return { mime, data: match[2] };
 }
 
-async function uploadImage(accessJwt: string, dataUrl?: string | null) {
+async function uploadBlob(accessJwt: string, dataUrl?: string | null) {
   if (!dataUrl) return null;
   const parsed = parseDataUrl(dataUrl);
   if (!parsed) return null;
@@ -27,7 +27,7 @@ async function uploadImage(accessJwt: string, dataUrl?: string | null) {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`Image upload failed: ${res.status} ${detail}`.trim());
+    throw new Error(`Upload failed: ${res.status} ${detail}`.trim());
   }
   const json = await res.json();
   return json?.blob || null;
@@ -35,9 +35,22 @@ async function uploadImage(accessJwt: string, dataUrl?: string | null) {
 
 export async function POST(req: Request) {
   try {
-    const { identifier, appPassword, text, images, replyControl, replyListUri } = await req.json();
+    const { identifier, appPassword, text, images, video, replyControl, replyListUri } = await req.json();
     if (!identifier || !appPassword || !text) {
       return NextResponse.json({ error: "Missing credentials or text" }, { status: 400 });
+    }
+    const videoData =
+      video && typeof video?.data === "string"
+        ? {
+            data: video.data as string,
+            alt: typeof video.alt === "string" ? video.alt : "",
+            width: video.width,
+            height: video.height,
+            size: video.size,
+          }
+        : null;
+    if (videoData?.size && videoData.size > 50 * 1024 * 1024) {
+      return NextResponse.json({ error: "Video too large (limit 50MB)" }, { status: 400 });
     }
     const imageArray: { data: string; alt?: string }[] = Array.isArray(images)
       ? images
@@ -55,7 +68,7 @@ export async function POST(req: Request) {
           )
           .slice(0, 4)
       : [];
-    if (imageArray.some((img) => img.data.startsWith("data:image/gif"))) {
+    if (!videoData && imageArray.some((img) => img.data.startsWith("data:image/gif"))) {
       return NextResponse.json(
         { error: "Animated GIFs are not supported for posting right now. Please use static images." },
         { status: 400 }
@@ -84,10 +97,23 @@ export async function POST(req: Request) {
     }
 
     let embed: any = undefined;
-    if (imageArray.length) {
+    if (videoData) {
+      const blob = await uploadBlob(accessJwt, videoData.data);
+      if (blob) {
+        embed = {
+          $type: "app.bsky.embed.video",
+          video: blob,
+          alt: videoData.alt || "",
+          aspectRatio:
+            videoData.width && videoData.height
+              ? { width: videoData.width, height: videoData.height }
+              : undefined,
+        };
+      }
+    } else if (imageArray.length) {
       const uploads = [];
       for (const img of imageArray.slice(0, 4)) {
-        const blob = await uploadImage(accessJwt, img.data);
+        const blob = await uploadBlob(accessJwt, img.data);
         if (blob) uploads.push({ blob, alt: img.alt });
       }
       if (uploads.length) {
