@@ -315,7 +315,6 @@ export default function MainPage() {
         saveLocalOrder(deduped.map((n) => n.id));
         return deduped;
       }
-      return next;
     });
     if (images?.length) {
       const keyStr = contentKey(content);
@@ -892,7 +891,28 @@ export default function MainPage() {
     }
 
     setPostingThread(true);
-    setThreadMessage(null);
+    setThreadMessage("Checking Bluesky availability...");
+    const ok = await (async () => {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch("https://bsky.social/xrpc/com.atproto.server.describeServer", {
+          method: "GET",
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        return res.ok;
+      } catch {
+        return false;
+      }
+    })();
+    if (!ok) {
+      setThreadMessage("Bluesky seems unavailable right now. Try again soon.");
+      setTimeout(() => setThreadMessage(null), 4000);
+      setPostingThread(false);
+      return;
+    }
+    setThreadMessage("Compressing images, this may take a moment...");
     try {
       const res = await fetch("/api/bluesky/thread", {
         method: "POST",
@@ -1100,14 +1120,7 @@ export default function MainPage() {
               sizes="100vw"
               className="mx-auto mb-4 mt-4 sm:mt-8 w-full max-w-[600px] h-auto"
             />
-            <Image
-              src="/assets/bluesky-demo.gif"
-              alt="BlueSky Composer demo"
-              width={600}
-              height={400}
-              sizes="100vw"
-              className="mx-auto mb-6 sm:mb-8 w-full max-w-[600px] h-auto rounded-lg border border-gray-200 shadow-sm"
-            />
+           
             <h2 className="text-center">This is what your notes look like when stored in the cloud.</h2>
             <Image 
               src="/assets/notes_encrypted.png"
@@ -1285,13 +1298,12 @@ export default function MainPage() {
                 </thead>
                 <tbody>
                   {[
+                    { feature: "Post threads to Bluesky", status: "Available (PRO)" },
                     { feature: "Organize your notes (drag & drop + up/down + tags/pins)", status: "Available (PRO)" },
-                    { feature: "Export notes (JSON + Markdown with tags/images included)", status: "Available (PRO)" },
-                    { feature: "Post directly to Bluesky with a secure app password", status: "Available (PRO)" },
-                    { feature: "Post selected notes as a thread to Bluesky", status: "Available (PRO)" },
                     { feature: "Copy selected notes to clipboard as text", status: "Available (PRO)" },
                     { feature: "Notes synced to the cloud (encrypted)", status: "Available (PRO)" },
                     { feature: "Delete protection (notes and metadata deleted across local/cloud)", status: "Available (PRO)" },
+                    { feature: "Export notes (JSON + Markdown with tags/images included)", status: "Available (PRO)" },
                     { feature: "Version history & restore", status: "Coming soon (PRO)" },
                     { feature: "Advanced search & filters", status: "Coming soon (PRO)" },
                   ].map((row, idx) => (

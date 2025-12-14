@@ -294,6 +294,21 @@ export default function Composer({
     }
   };
 
+  const checkBskyAvailability = async () => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch("https://bsky.social/xrpc/com.atproto.server.describeServer", {
+        method: "GET",
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
   const postToBluesky = async () => {
     const safe = sanitizePlainText(text).trim();
     if (!safe) return;
@@ -303,8 +318,15 @@ export default function Composer({
       return;
     }
     setPosting(true);
+    setPostMessage("Checking Bluesky availability...");
+    const ok = await checkBskyAvailability();
+    if (!ok) {
+      setPostMessage("Bluesky seems unavailable right now. Try again soon.");
+      setTimeout(() => setPostMessage(null), 4000);
+      setPosting(false);
+      return;
+    }
     setPostMessage("Compressing images, this may take a moment...");
-    setPostMessage(null);
     try {
       const totalBytes = images.reduce((sum, img) => sum + dataUrlSizeBytes(img.data), 0);
       if (totalBytes > 3_600_000) {
