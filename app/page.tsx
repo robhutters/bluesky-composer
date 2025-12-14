@@ -1032,17 +1032,56 @@ export default function MainPage() {
   return (
     <>
   
-      <div className="space-y-5 sm:space-y-6 flex flex-col items-center justify-center min-h-screen py-3 sm:py-6 px-2 sm:px-4 bg-gray-100 relative">
+      <div className="space-y-5 sm:space-y-6 flex flex-col items-center justify-center min-h-screen py-4 sm:py-8 px-2 sm:px-5 bg-gray-100 text-slate-900 relative overflow-hidden">
 
-      <main className="w-full max-w-[900px] flex-col flex justify-center space-y-3 sm:space-y-4 md:space-y-5">
+      <main className="w-full max-w-[1000px] flex-col flex justify-center space-y-4 sm:space-y-6 md:space-y-7">
         {!user && (
-          <div className="mb-6 space-y-2 text-left">
-            <h1 className="text-2xl sm:text-3xl font-semibold uppercase mt-4 sm:mt-8 text-slate-900 press-start">
-              Because I know you love yapping about games on Bluesky
-            </h1>
-            <p className="text-md text-slate-600">
-              Think of it as a desktop notes app for BlueSky designed specifically for you.
-            </p>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-5 lg:gap-6 items-center">
+            <div className="space-y-3 text-left">
+              <h1 className="text-2xl sm:text-3xl font-semibold uppercase mt-2 sm:mt-4 text-slate-900 press-start">
+                Ship your takes. Get back to your games.
+              </h1>
+              <p className="text-base sm:text-lg text-slate-700 font-[500]">
+               A desktop-friendly notes app for BlueSky. 
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                  <span className="h-2 w-2 rounded-full bg-rose-400 inline-block" />
+                  Try it for free (no sign-in)
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                  <span className="h-2 w-2 rounded-full bg-sky-400 inline-block" />
+                  Post to Bluesky for free
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 inline-block" />
+                  Threads & sync are PRO
+                </span>
+              </div>
+            </div>
+            <div className="relative">
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-xl p-4 sm:p-5">
+                <div className="flex items-center justify-between text-xs text-slate-600 mb-3">
+                  <span className="font-semibold text-slate-900">Composer preview</span>
+                  <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px]">
+                    Free posts enabled
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  <div className="h-3 w-2/3 rounded bg-gray-200" />
+                  <div className="h-3 w-1/2 rounded bg-gray-200" />
+                  <div className="h-24 rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 shadow-inner" />
+                  <div className="flex gap-2">
+                    <div className="flex-1 rounded-md border border-sky-200 bg-sky-50 text-sky-700 text-center py-2 text-xs font-semibold shadow">
+                      Post to Bluesky (free)
+                    </div>
+                    <div className="flex-1 rounded-md border border-pink-200 bg-pink-50 text-pink-700 text-center py-2 text-xs font-semibold shadow">
+                      Thread (PRO)
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         {/* Inline messages (upgrade/sync) */}
