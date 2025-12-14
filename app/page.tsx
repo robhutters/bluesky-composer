@@ -1036,16 +1036,17 @@ export default function MainPage() {
 
       <main className="w-full max-w-[1000px] flex-col flex justify-center space-y-4 sm:space-y-6 md:space-y-7">
         {!user && (
-          <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-5 lg:gap-6 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_0.7fr] gap-5 lg:gap-6 items-center">
             <div className="space-y-3 text-left">
               <h1 className="text-2xl sm:text-3xl font-semibold uppercase mt-2 sm:mt-4 text-slate-900 press-start">
-                Ship your takes. Get back to your games.
+                Because you love yapping about games.
               </h1>
               <p className="text-base sm:text-lg text-slate-700 font-[500]">
                A desktop-friendly notes app for BlueSky. 
               </p>
               <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                <div className="mr-3">
+                   <span className="mr-2 inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-rose-400 inline-block" />
                   Try it for free (no sign-in)
                 </span>
@@ -1053,7 +1054,9 @@ export default function MainPage() {
                   <span className="h-2 w-2 rounded-full bg-sky-400 inline-block" />
                   Post to Bluesky for free
                 </span>
-                <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                </div>
+               <div className="mr-3">
+                <span className="mr-2 inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-emerald-400 inline-block" />
                   Threads & sync are PRO
                 </span>
@@ -1061,6 +1064,8 @@ export default function MainPage() {
                   <span className="h-2 w-2 rounded-full bg-purple-400 inline-block" />
                   Video posting is PRO
                 </span>
+               </div>
+                
               </div>
             </div>
             <div className="relative">
