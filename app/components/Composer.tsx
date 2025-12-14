@@ -604,7 +604,7 @@ export default function Composer({
 
 
   return (
-    <div className="w-full max-w-[600px] mx-auto mt-8 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
+    <div className="w-full max-w-[600px] mx-auto mt-4 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
       <h2 className="text-xl font-semibold mb-4">BlueSky Composer</h2>
       {flashMessage && (
         <div className="fixed top-4 right-4 z-50 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg">
@@ -938,7 +938,7 @@ export default function Composer({
           >
             {text.length}/{MAX_CHARACTERS}
           </span>
-          <div className=" gap-2 flex-wrap">
+          <div className="flex flex-col gap-2 flex-wrap">
             <label className="text-xs font-semibold text-gray-700">Limit replies to post</label>
             <select
               value={replyControl}

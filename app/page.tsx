@@ -58,6 +58,7 @@ export default function MainPage() {
   const [replyTarget, setReplyTarget] = useState<any | null>(null);
   const [suggestedFeeds, setSuggestedFeeds] = useState<any[]>([]);
   const [selectedFeed, setSelectedFeed] = useState<string | null>(null);
+  const [showDiscover, setShowDiscover] = useState(true);
 
   const scrollToAuth = () => {
     const el = typeof document !== "undefined" ? document.getElementById("login-form") : null;
@@ -1392,74 +1393,87 @@ export default function MainPage() {
                     <div className="text-sm font-semibold text-slate-900">Discover tab (PRO)</div>
                     <div className="text-[11px] text-slate-500">Browse feeds, pick one, tap to reply.</div>
                   </div>
-                </div>
-                <div className="p-3 border-b border-gray-200 space-y-2">
-                  <label className="text-xs font-semibold text-slate-700">Choose feed</label>
-                  <select
-                    value={selectedFeed || ""}
-                    onChange={(e) => {
-                      const next = e.target.value || null;
-                      setSelectedFeed(next);
-                      if (next) {
-                        void fetchDiscoverFeed(next);
-                      }
-                    }}
-                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
+                  <button
+                    className="text-xs font-semibold text-slate-700 underline"
+                    onClick={() => setShowDiscover((v) => !v)}
                   >
-                    <option value="">Select a feed</option>
-                    {suggestedFeeds.map((f: any) => (
-                      <option key={f.uri} value={f.uri}>
-                        {f.displayName || f.name || f.uri}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedFeed && (
-                    <div className="text-[11px] text-slate-500">
-                      Viewing: {suggestedFeeds.find((f: any) => f.uri === selectedFeed)?.description || "Feed posts"}
-                    </div>
-                  )}
+                    {showDiscover ? "Hide feed" : "Show feed"}
+                  </button>
                 </div>
-                <div className="h-[600px] lg:h-[calc(100vh-240px)] overflow-y-auto p-3 space-y-3 bg-white rounded-b-md">
-                  {discoverLoading && <div className="text-sm text-slate-500">Loading feed…</div>}
-                  {discoverError && <div className="text-sm text-red-600">{discoverError}</div>}
-                  {!discoverLoading && !discoverError && discoverFeed.length === 0 && (
-                    <div className="text-sm text-slate-500">No posts found yet.</div>
-                  )}
-                  {discoverFeed.map((item) => (
-                    <button
-                      key={item.uri}
-                      className="w-full text-left rounded border border-gray-200 bg-gray-50 hover:bg-gray-100 p-3 shadow-sm"
-                      onClick={() => {
-                        setReplyTarget(item);
-                      }}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-slate-900 text-sm">
-                          {item.authorDisplay || item.authorHandle}
-                        </div>
-                        <span className="text-[11px] text-slate-500">{item.authorHandle}</span>
-                      </div>
-                      <p className="mt-2 text-sm text-slate-800 whitespace-pre-wrap break-words">{item.text || "(no text)"}</p>
-                      {Array.isArray(item.images) && item.images.length > 0 && (
-                        <div className="mt-3 grid grid-cols-1 gap-3">
-                          {item.images.slice(0, 4).map((img: any, idx: number) => (
-                            <div key={idx} className="relative overflow-hidden rounded-lg border border-gray-200 bg-white">
-                              {img?.thumb ? (
-                                <Image
-                                  src={img.thumb}
-                                  alt={img.alt || "Discover image"}
-                                  width={900}
-                                  height={600}
-                                  className="w-full h-auto object-cover"
-                                />
-                              ) : null}
-                            </div>
-                          ))}
+                {showDiscover && (
+                  <>
+                    <div className="p-3 border-b border-gray-200 space-y-2">
+                      <label className="text-xs font-semibold text-slate-700">Choose feed</label>
+                      <select
+                        value={selectedFeed || ""}
+                        onChange={(e) => {
+                          const next = e.target.value || null;
+                          setSelectedFeed(next);
+                          if (next) {
+                            void fetchDiscoverFeed(next);
+                          }
+                        }}
+                        className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
+                      >
+                        <option value="">Select a feed</option>
+                        {suggestedFeeds.map((f: any) => (
+                          <option key={f.uri} value={f.uri}>
+                            {f.displayName || f.name || f.uri}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedFeed && (
+                        <div className="text-[11px] text-slate-500">
+                          Viewing: {suggestedFeeds.find((f: any) => f.uri === selectedFeed)?.description || "Feed posts"}
                         </div>
                       )}
-                    </button>
-                  ))}
-                </div>
+                    </div>
+                    <div
+                      className="h-[600px] lg:h-[calc(100vh-240px)] overflow-y-auto p-3 space-y-3 bg-white rounded-b-md"
+                      style={{ scrollbarGutter: "stable" }}
+                    >
+                      {discoverLoading && <div className="text-sm text-slate-500">Loading feed…</div>}
+                      {discoverError && <div className="text-sm text-red-600">{discoverError}</div>}
+                      {!discoverLoading && !discoverError && discoverFeed.length === 0 && (
+                        <div className="text-sm text-slate-500">No posts found yet.</div>
+                      )}
+                      {discoverFeed.map((item) => (
+                        <button
+                          key={item.uri}
+                          className="w-full text-left rounded border border-gray-200 bg-gray-50 hover:bg-gray-100 p-3 shadow-sm"
+                          onClick={() => {
+                            setReplyTarget(item);
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-semibold text-slate-900 text-sm">
+                              {item.authorDisplay || item.authorHandle}
+                            </div>
+                            <span className="text-[11px] text-slate-500">{item.authorHandle}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-800 whitespace-pre-wrap break-words">{item.text || "(no text)"}</p>
+                          {Array.isArray(item.images) && item.images.length > 0 && (
+                            <div className="mt-3 grid grid-cols-1 gap-3">
+                              {item.images.slice(0, 4).map((img: any, idx: number) => (
+                                <div key={idx} className="relative overflow-hidden rounded-lg border border-gray-200 bg-white">
+                                  {img?.thumb ? (
+                                    <Image
+                                      src={img.thumb}
+                                      alt={img.alt || "Discover image"}
+                                      width={900}
+                                      height={600}
+                                      className="w-full h-auto object-cover"
+                                    />
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
