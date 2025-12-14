@@ -35,7 +35,7 @@ async function uploadBlob(accessJwt: string, dataUrl?: string | null) {
 
 export async function POST(req: Request) {
   try {
-    const { identifier, appPassword, text, images, video, replyControl, replyListUri } = await req.json();
+    const { identifier, appPassword, text, images, video, replyControl, replyListUri, replyTarget } = await req.json();
     if (!identifier || !appPassword || !text) {
       return NextResponse.json({ error: "Missing credentials or text" }, { status: 400 });
     }
@@ -52,18 +52,20 @@ export async function POST(req: Request) {
     if (videoData?.size && videoData.size > 50 * 1024 * 1024) {
       return NextResponse.json({ error: "Video too large (limit 50MB)" }, { status: 400 });
     }
-    const imageArray: { data: string; alt?: string }[] = Array.isArray(images)
+    const imageArray: { data: string; alt?: string; width?: number; height?: number }[] = Array.isArray(images)
       ? images
           .map(
-            (img: any): { data: string; alt?: string } | null =>
+            (img: any): { data: string; alt?: string; width?: number; height?: number } | null =>
               typeof img === "string"
                 ? { data: img, alt: undefined }
                 : typeof img?.data === "string"
-                  ? { data: img.data, alt: img?.alt }
+                  ? { data: img.data, alt: img?.alt, width: img?.width, height: img?.height }
                   : null
           )
           .filter(
-            (img: { data: string; alt?: string } | null): img is { data: string; alt?: string } =>
+            (
+              img: { data: string; alt?: string; width?: number; height?: number } | null
+            ): img is { data: string; alt?: string; width?: number; height?: number } =>
               !!img && typeof img.data === "string"
           )
           .slice(0, 4)
@@ -122,6 +124,10 @@ export async function POST(req: Request) {
           images: uploads.map((item, idx) => ({
             alt: item.alt || text.slice(0, 100) || `image-${idx + 1}`,
             image: item.blob,
+            aspectRatio:
+              typeof imageArray[idx]?.width === "number" && typeof imageArray[idx]?.height === "number"
+                ? { width: imageArray[idx]!.width as number, height: imageArray[idx]!.height as number }
+                : undefined,
           })),
         };
       }
@@ -132,6 +138,12 @@ export async function POST(req: Request) {
       text,
       createdAt: new Date().toISOString(),
     };
+    if (replyTarget?.uri && replyTarget?.cid) {
+      record.reply = {
+        root: { uri: replyTarget.uri, cid: replyTarget.cid },
+        parent: { uri: replyTarget.uri, cid: replyTarget.cid },
+      };
+    }
     if (embed) record.embed = embed;
 
     const postRes = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {

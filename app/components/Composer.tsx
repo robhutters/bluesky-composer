@@ -15,12 +15,14 @@ export default function Composer({
   user,
   isPro,
   proCheckoutUrl,
+  replyTarget,
 }: {
   onNoteSaved: () => void;
   onLocalSave: (content: string, images?: { data: string; alt: string }[]) => void;
   user: any;
   isPro: boolean;
   proCheckoutUrl?: string;
+  replyTarget?: { uri: string; cid: string } | null;
 }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -358,6 +360,14 @@ export default function Composer({
 
   const postDirectWithVideo = async (safe: string) => {
     if (!video) return;
+    if (replyTarget?.uri && typeof window !== "undefined") {
+      const confirmReply = window.confirm(
+        "You’re about to reply to a post (not post to your own timeline). Continue?"
+      );
+      if (!confirmReply) {
+        throw new Error("Reply cancelled by user");
+      }
+    }
     const sessionRes = await fetch("https://bsky.social/xrpc/com.atproto.server.createSession", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -385,6 +395,12 @@ export default function Composer({
           video.width && video.height ? { width: video.width, height: video.height } : undefined,
       },
     };
+    if (replyTarget?.uri && replyTarget?.cid) {
+      record.reply = {
+        root: { uri: replyTarget.uri, cid: replyTarget.cid },
+        parent: { uri: replyTarget.uri, cid: replyTarget.cid },
+      };
+    }
 
     const postRes = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
       method: "POST",
@@ -443,6 +459,17 @@ export default function Composer({
         return;
       }
 
+      if (replyTarget?.uri && typeof window !== "undefined") {
+        const confirmReply = window.confirm(
+          "You’re about to reply to a post (not post to your own timeline). Continue?"
+        );
+        if (!confirmReply) {
+          setPosting(false);
+          setPostMessage(null);
+          return;
+        }
+      }
+
       if (video) {
         await postDirectWithVideo(safe);
       } else {
@@ -453,9 +480,15 @@ export default function Composer({
             identifier: bskyHandle.trim(),
             appPassword: bskyAppPassword.trim(),
             text: safe,
-            images: images.map((img) => ({ data: img.data, alt: img.alt || img.name })),
+            images: images.map((img) => ({
+              data: img.data,
+              alt: img.alt || img.name,
+              width: img.width,
+              height: img.height,
+            })),
             replyControl,
             replyListUri,
+            replyTarget,
           }),
         });
         const body = await res.json().catch(() => ({}));
@@ -571,7 +604,7 @@ export default function Composer({
 
 
   return (
-    <div className="w-full max-w-lg mx-auto mt-8 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
+    <div className="w-full max-w-[600px] mx-auto mt-8 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
       <h2 className="text-xl font-semibold mb-4">BlueSky Composer</h2>
       {flashMessage && (
         <div className="fixed top-4 right-4 z-50 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg">
@@ -905,7 +938,7 @@ export default function Composer({
           >
             {text.length}/{MAX_CHARACTERS}
           </span>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className=" gap-2 flex-wrap">
             <label className="text-xs font-semibold text-gray-700">Limit replies to post</label>
             <select
               value={replyControl}
