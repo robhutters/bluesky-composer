@@ -323,6 +323,87 @@ export default function Composer({
     }
   };
 
+  const parseDataUrlToBuffer = (dataUrl: string) => {
+    const match = dataUrl.match(/^data:(.*);base64,(.*)$/);
+    if (!match) return null;
+    const mime = match[1];
+    const base64 = match[2];
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return { mime, buffer: bytes.buffer };
+  };
+
+  const uploadBlobDirect = async (accessJwt: string, dataUrl: string) => {
+    const parsed = parseDataUrlToBuffer(dataUrl);
+    if (!parsed) throw new Error("Invalid media data");
+    const res = await fetch("https://bsky.social/xrpc/com.atproto.repo.uploadBlob", {
+      method: "POST",
+      headers: {
+        "Content-Type": parsed.mime || "application/octet-stream",
+        Authorization: `Bearer ${accessJwt}`,
+      },
+      body: parsed.buffer,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`Upload failed: ${res.status} ${detail}`.trim());
+    }
+    const json = await res.json();
+    return json?.blob;
+  };
+
+  const postDirectWithVideo = async (safe: string) => {
+    if (!video) return;
+    const sessionRes = await fetch("https://bsky.social/xrpc/com.atproto.server.createSession", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: bskyHandle.trim(), password: bskyAppPassword.trim() }),
+    });
+    if (!sessionRes.ok) {
+      const detail = await sessionRes.text().catch(() => "");
+      throw new Error(`Login failed: ${sessionRes.status} ${detail}`.trim());
+    }
+    const session = await sessionRes.json();
+    const accessJwt = session.accessJwt;
+    const did = session.did;
+    if (!accessJwt || !did) throw new Error("Missing session data from Bluesky");
+
+    const blob = await uploadBlobDirect(accessJwt, video.data);
+    const record: any = {
+      $type: "app.bsky.feed.post",
+      text: safe,
+      createdAt: new Date().toISOString(),
+      embed: {
+        $type: "app.bsky.embed.video",
+        video: blob,
+        alt: video.alt || "",
+        aspectRatio:
+          video.width && video.height ? { width: video.width, height: video.height } : undefined,
+      },
+    };
+
+    const postRes = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessJwt}`,
+      },
+      body: JSON.stringify({
+        repo: did,
+        collection: "app.bsky.feed.post",
+        record,
+      }),
+    });
+    if (!postRes.ok) {
+      const detail = await postRes.text().catch(() => "");
+      throw new Error(`Post failed: ${postRes.status} ${detail}`.trim());
+    }
+  };
+
   const postToBluesky = async () => {
     const safe = sanitizePlainText(text).trim();
     if (!safe) return;
@@ -362,29 +443,24 @@ export default function Composer({
         return;
       }
 
-      const res = await fetch("/api/bluesky/post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          identifier: bskyHandle.trim(),
-          appPassword: bskyAppPassword.trim(),
-          text: safe,
-          images: images.map((img) => ({ data: img.data, alt: img.alt || img.name })),
-          video: video
-            ? {
-                data: video.data,
-                alt: video.alt || "",
-                width: video.width,
-                height: video.height,
-                size: video.size,
-              }
-            : null,
-          replyControl,
-          replyListUri,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || "Failed to post");
+      if (video) {
+        await postDirectWithVideo(safe);
+      } else {
+        const res = await fetch("/api/bluesky/post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identifier: bskyHandle.trim(),
+            appPassword: bskyAppPassword.trim(),
+            text: safe,
+            images: images.map((img) => ({ data: img.data, alt: img.alt || img.name })),
+            replyControl,
+            replyListUri,
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || "Failed to post");
+      }
       setPostMessage("Posted to Bluesky ✔️");
       setTimeout(() => setPostMessage(null), 4000);
     } catch (err: any) {
@@ -578,7 +654,7 @@ export default function Composer({
               />
             </div>
           <p className="text-[11px] text-blue-700">
-            Optional: add your Bluesky handle + <strong>app password</strong> (not your regular login password) to post directly to your timeline. Get an app password from{" "}
+            Add your Bluesky handle + <strong>app password</strong> (not your regular login password) to post directly to your timeline. Get an app password from{" "}
             <a
               href="https://bsky.app/settings/app-passwords"
               target="_blank"
