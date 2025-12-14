@@ -1347,6 +1347,7 @@ export default function MainPage() {
                 <tbody>
                   {[
                     { feature: "Post threads to Bluesky", status: "Available (PRO)" },
+                    { feature: "Post videos to Bluesky", status: "Available (PRO)" },
                     { feature: "Organize your notes (drag & drop + up/down + tags/pins)", status: "Available (PRO)" },
                     { feature: "Copy selected notes to clipboard as text", status: "Available (PRO)" },
                     { feature: "Notes synced to the cloud (encrypted)", status: "Available (PRO)" },
