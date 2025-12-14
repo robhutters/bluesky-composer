@@ -900,10 +900,19 @@ export default function MainPage() {
         body: JSON.stringify({
           identifier: handle,
           appPassword,
-          posts: selectedNotes.map((n) => ({
-            text: n.plaintext || "",
-            imageData: n.imageData || null,
-          })),
+          posts: selectedNotes.map((n) => {
+            const imgs = Array.isArray(n.images)
+              ? n.images
+                  .filter((img: any) => typeof img?.data === "string")
+                  .slice(0, 4)
+              : n.imageData
+                ? [{ data: n.imageData, alt: n.imageAlt || "" }]
+                : [];
+            return {
+              text: n.plaintext || "",
+              images: imgs,
+            };
+          }),
           replyControl,
           replyListUri,
         }),

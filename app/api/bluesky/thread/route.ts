@@ -88,18 +88,18 @@ export async function POST(req: Request) {
     for (let i = 0; i < posts.length; i++) {
       const post = posts[i];
       const text = typeof post?.text === "string" ? post.text : "";
-      const imgArray: { data: string; alt?: string }[] = Array.isArray(post?.images)
+      const imgArray: { data: string; alt?: string; width?: number; height?: number }[] = Array.isArray(post?.images)
         ? post.images
             .map(
-              (img: any): { data: string; alt?: string } | null =>
+              (img: any): { data: string; alt?: string; width?: number; height?: number } | null =>
                 typeof img === "string"
                   ? { data: img, alt: undefined }
                   : typeof img?.data === "string"
-                    ? { data: img.data, alt: img?.alt }
+                    ? { data: img.data, alt: img?.alt, width: img?.width, height: img?.height }
                     : null
             )
             .filter(
-              (img: { data: string; alt?: string } | null): img is { data: string; alt?: string } =>
+              (img: { data: string; alt?: string; width?: number; height?: number } | null): img is { data: string; alt?: string; width?: number; height?: number } =>
                 !!img && typeof img.data === "string"
             )
             .slice(0, 4)
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
         const uploads = [];
         for (const img of imgArray.slice(0, 4)) {
           const blob = await uploadImage(accessJwt, img.data);
-          if (blob) uploads.push({ blob, alt: img.alt });
+          if (blob) uploads.push({ blob, alt: img.alt, width: img.width, height: img.height });
         }
         if (uploads.length) {
           embed = {
@@ -121,6 +121,10 @@ export async function POST(req: Request) {
             images: uploads.map((item, idx) => ({
               alt: item.alt || text.slice(0, 100) || `image-${idx + 1}`,
               image: item.blob,
+              aspectRatio:
+                item.width && item.height
+                  ? { width: item.width, height: item.height }
+                  : undefined,
             })),
           };
         }
