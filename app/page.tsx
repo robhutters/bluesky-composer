@@ -1522,8 +1522,8 @@ export default function MainPage() {
                 </ol>
               </div>
             )}
-            <div className="mt-4 w-full flex flex-wrap flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
-              <div className="flex flex-row flex-wrap gap-1 w-full sm:w-auto">
+            <div className="mt-4 w-full lg:justify-center flex flex-wrap flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
+              <div className="flex flex-col gap-1 w-full sm:w-auto">
                 <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
                 <select
                   value={replyControl}
@@ -1546,7 +1546,8 @@ export default function MainPage() {
                   />
                 )}
               </div>
-              <button
+            <div className="flex flex-row mt-4 items-center gap-2">
+                <button
                 onClick={() => exportCloudNotes("json")}
                 disabled={exporting}
                 className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${exporting ? "bg-indigo-400 cursor-wait" : "bg-indigo-600 hover:bg-indigo-700"}`}
@@ -1589,6 +1590,7 @@ export default function MainPage() {
               >
                 Copy selected (thread)
               </button>
+            </div>
             </div>
           </>
         )}
