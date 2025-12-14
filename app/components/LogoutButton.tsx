@@ -3,8 +3,22 @@ import { supabase } from "../lib/supabaseClient";
 
 export default function LogoutButton() {
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    // optional: refresh page or redirect
+    try {
+      await supabase.auth.signOut({ scope: "global" });
+    } catch (e) {
+      // ignore
+    }
+    // Hard clear Supabase auth entries from localStorage to prevent auto re-login
+    if (typeof window !== "undefined") {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && (key.includes("supabase.auth.token") || key.startsWith("sb-"))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+    }
     window.location.href = "/";
   };
 
