@@ -334,7 +334,7 @@ export default function Composer({
     for (let i = 0; i < len; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
-    return { mime, buffer: bytes.buffer };
+    return { mime, bytes };
   };
 
   const uploadBlobDirect = async (accessJwt: string, dataUrl: string) => {
@@ -346,7 +346,7 @@ export default function Composer({
         "Content-Type": parsed.mime || "application/octet-stream",
         Authorization: `Bearer ${accessJwt}`,
       },
-      body: parsed.buffer,
+      body: parsed.bytes,
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
