@@ -33,7 +33,16 @@ export default function Composer({
   const lastPingRef = useRef<number>(0);
   const lastSavePingRef = useRef<number>(0);
   const [images, setImages] = useState<{ data: string; name: string; alt: string; width?: number; height?: number }[]>([]);
-  const [video, setVideo] = useState<{ data: string; name: string; alt: string; width?: number; height?: number; size?: number } | null>(null);
+  const [video, setVideo] = useState<{
+    data?: string;
+    bytes?: Uint8Array;
+    mime?: string;
+    name: string;
+    alt: string;
+    width?: number;
+    height?: number;
+    size?: number;
+  } | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [bskyHandle, setBskyHandle] = useState("");
@@ -328,7 +337,8 @@ export default function Composer({
   const parseDataUrlToBuffer = (dataUrl: string) => {
     const match = dataUrl.match(/^data:(.*);base64,(.*)$/);
     if (!match) return null;
-    const mime = match[1];
+    const rawMime = match[1] || "";
+    const mime = rawMime.split(";")[0]?.trim() || "application/octet-stream";
     const base64 = match[2];
     const binary = atob(base64);
     const len = binary.length;
@@ -339,16 +349,28 @@ export default function Composer({
     return { mime, bytes };
   };
 
-  const uploadBlobDirect = async (accessJwt: string, dataUrl: string) => {
-    const parsed = parseDataUrlToBuffer(dataUrl);
+  const uploadBlobDirect = async (
+    accessJwt: string,
+    payload: { bytes?: Uint8Array; dataUrl?: string; mime?: string }
+  ) => {
+    const parsed =
+      payload.bytes && payload.mime
+        ? { bytes: payload.bytes, mime: payload.mime }
+        : payload.dataUrl
+          ? parseDataUrlToBuffer(payload.dataUrl)
+          : null;
     if (!parsed) throw new Error("Invalid media data");
+    const blobBody =
+      parsed.bytes instanceof Uint8Array
+        ? new Blob([parsed.bytes.buffer as ArrayBuffer], { type: parsed.mime || "application/octet-stream" })
+        : parsed.bytes;
     const res = await fetch("https://bsky.social/xrpc/com.atproto.repo.uploadBlob", {
       method: "POST",
       headers: {
         "Content-Type": parsed.mime || "application/octet-stream",
         Authorization: `Bearer ${accessJwt}`,
       },
-      body: parsed.bytes,
+      body: blobBody as any,
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
@@ -356,6 +378,49 @@ export default function Composer({
     }
     const json = await res.json();
     return json?.blob;
+  };
+
+  const uploadVideoToBsky = async (accessJwt: string, videoPayload: typeof video) => {
+    if (!videoPayload || !videoPayload.bytes) throw new Error("Missing video data");
+    const arrayBuffer = videoPayload.bytes.buffer as ArrayBuffer;
+    const blobBody = new Blob([arrayBuffer], { type: videoPayload.mime || "video/mp4" });
+
+    // Start upload via dedicated video endpoint
+    const uploadRes = await fetch("https://video.bsky.app/xrpc/app.bsky.video.uploadVideo", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessJwt}`,
+        "Content-Type": videoPayload.mime || "video/mp4",
+      },
+      body: blobBody,
+    });
+    if (!uploadRes.ok) {
+      const detail = await uploadRes.text().catch(() => "");
+      throw new Error(`Video upload failed: ${uploadRes.status} ${detail}`.trim());
+    }
+    const job = await uploadRes.json();
+    if (job?.blob) return job.blob;
+    const jobId = job?.jobId;
+    if (!jobId) throw new Error("Video upload did not return a jobId");
+
+    // Poll job status until completed or failed
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < 10; i++) {
+      await sleep(1000);
+      const statusRes = await fetch(
+        `https://video.bsky.app/xrpc/app.bsky.video.getJobStatus?jobId=${encodeURIComponent(jobId)}`,
+        { headers: { Authorization: `Bearer ${accessJwt}` } }
+      );
+      if (!statusRes.ok) continue;
+      const statusJson = await statusRes.json();
+      if (statusJson?.status === "FAILED") {
+        throw new Error("Video processing failed");
+      }
+      if (statusJson?.status === "COMPLETED" && statusJson?.blob) {
+        return statusJson.blob;
+      }
+    }
+    throw new Error("Video processing timed out");
   };
 
   const postDirectWithVideo = async (safe: string) => {
@@ -382,7 +447,7 @@ export default function Composer({
     const did = session.did;
     if (!accessJwt || !did) throw new Error("Missing session data from Bluesky");
 
-    const blob = await uploadBlobDirect(accessJwt, video.data);
+    const blob = await uploadVideoToBsky(accessJwt, video);
     const record: any = {
       $type: "app.bsky.feed.post",
       text: safe,
@@ -471,7 +536,31 @@ export default function Composer({
       }
 
       if (video) {
-        await postDirectWithVideo(safe);
+        const res = await fetch("/api/bluesky/post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            identifier: bskyHandle.trim(),
+            appPassword: bskyAppPassword.trim(),
+            text: safe,
+            video: {
+              bytes: video.bytes ? Array.from(video.bytes) : undefined,
+              data: video.data,
+              mime: video.mime,
+              alt: video.alt,
+              width: video.width,
+              height: video.height,
+              size: video.size,
+              name: video.name,
+            },
+            images: [],
+            replyControl,
+            replyListUri,
+            replyTarget,
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || "Failed to post video");
       } else {
         const res = await fetch("/api/bluesky/post", {
           method: "POST",
@@ -757,22 +846,42 @@ export default function Composer({
         placeholder="What's on your mind?"
         className="w-full min-h-[120px] p-3 text-base border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
-      <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
-        <label className="block text-sm font-semibold text-gray-800">
-          Add up to 4 images [png, jpg]
-        </label>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition filter grayscale hover:grayscale-0 hover:bg-gray-100 hover:shadow-md"
-          >
-            {images.length ? "Add/Change images" : "Choose images"}
-          </button>
-          <span className="text-xs text-gray-600">
-            {images.length ? `${images.length} selected` : "No images selected"}
+      <div className="mt-4 space-y-3 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <label className="block text-sm font-semibold text-gray-800">Media</label>
+          <span className="text-[11px] text-gray-600">
+            Images (up to 4, png/jpg) {isPro ? " • 1 video (mp4)" : ""}
           </span>
         </div>
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition filter grayscale hover:grayscale-0 hover:bg-gray-100 hover:shadow-md"
+            >
+              {images.length ? "Add/Change images" : "Choose images"}
+            </button>
+            <span className="text-xs text-gray-600">
+              {images.length ? `${images.length} selected` : "No images selected"}
+            </span>
+          </div>
+          {isPro && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => videoInputRef.current?.click()}
+                className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-100 hover:shadow-md"
+              >
+                {video ? "Replace video" : "Choose video"}
+              </button>
+              <span className="text-xs text-gray-600">
+                {video ? `${video.name}` : "No video selected"}
+              </span>
+            </div>
+          )}
+        </div>
+
         <input
           ref={fileInputRef}
           type="file"
@@ -785,7 +894,6 @@ export default function Composer({
               setImages([]);
               return;
             }
-            const allowedTypes = ["image/png", "image/jpeg"];
             const max = 4;
             const current = [...images];
             const slots = Math.max(0, max - current.length);
@@ -803,6 +911,59 @@ export default function Composer({
             });
           }}
         />
+
+        {isPro && (
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/mp4"
+          className="hidden"
+          onChange={(e) => {
+            const file = (e.target.files || [])[0];
+            if (!file) {
+              setVideo(null);
+              return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+              setPostMessage("Video too large (limit ~10MB). Please choose a smaller file.");
+              setTimeout(() => setPostMessage(null), 4000);
+              setVideo(null);
+              return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+              const arrayBuffer = reader.result as ArrayBuffer;
+              const bytes = new Uint8Array(arrayBuffer);
+              const vid = document.createElement("video");
+              vid.preload = "metadata";
+              vid.onloadedmetadata = () => {
+                const width = vid.videoWidth;
+                const height = vid.videoHeight;
+                setVideo({
+                  bytes,
+                  mime: file.type || "video/mp4",
+                  name: file.name,
+                  alt: "",
+                  width,
+                  height,
+                  size: file.size,
+                });
+              };
+              vid.onerror = () => {
+                setVideo(null);
+                setPostMessage("Could not read video metadata.");
+                setTimeout(() => setPostMessage(null), 3000);
+              };
+              const blobUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: file.type || "video/mp4" }));
+              vid.src = blobUrl;
+            };
+            reader.onerror = () => setVideo(null);
+            reader.readAsArrayBuffer(file);
+          }}
+        />
+        )}
+
         {images.length > 0 && (
           <div className="mt-3 grid grid-cols-1 gap-3">
             {images.map((img, idx) => (
@@ -841,69 +1002,10 @@ export default function Composer({
             ))}
           </div>
         )}
-        <p className="text-[11px] text-gray-500">
-          Images stay on this device and are never uploaded to Supabase. If you post to Bluesky, up to 4 images are sent with the text; only the text is synced to Supabase.
-        </p>
-      </div>
 
-      {isPro && (
-      <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-4">
-        <label className="block text-sm font-semibold text-gray-800">
-          Add one video [mp4] (max ~10MB)
-        </label>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => videoInputRef.current?.click()}
-            className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-100 hover:shadow-md"
-          >
-            {video ? "Replace video" : "Choose video"}
-          </button>
-          <span className="text-xs text-gray-600">
-            {video ? `${video.name}` : "No video selected"}
-          </span>
-        </div>
-        <input
-          ref={videoInputRef}
-          type="file"
-          accept="video/mp4"
-          className="hidden"
-          onChange={(e) => {
-            const file = (e.target.files || [])[0];
-            if (!file) {
-              setVideo(null);
-              return;
-            }
-            if (file.size > 10 * 1024 * 1024) {
-              setPostMessage("Video too large (limit ~10MB). Please choose a smaller file.");
-              setTimeout(() => setPostMessage(null), 4000);
-              setVideo(null);
-              return;
-            }
-            const reader = new FileReader();
-            reader.onload = () => {
-              const url = reader.result as string;
-              const vid = document.createElement("video");
-              vid.preload = "metadata";
-              vid.onloadedmetadata = () => {
-                const width = vid.videoWidth;
-                const height = vid.videoHeight;
-                setVideo({ data: url, name: file.name, alt: "", width, height, size: file.size });
-              };
-              vid.onerror = () => {
-                setVideo(null);
-                setPostMessage("Could not read video metadata.");
-                setTimeout(() => setPostMessage(null), 3000);
-              };
-              vid.src = url;
-            };
-            reader.onerror = () => setVideo(null);
-            reader.readAsDataURL(file);
-          }}
-        />
-        {video && (
+        {isPro && video && (
           <div className="space-y-2">
-            <div className="text-xs text-gray-600">Selected: {video.name}</div>
+            <div className="text-xs text-gray-600">Selected video: {video.name}</div>
             <input
               type="text"
               value={video.alt}
@@ -923,11 +1025,11 @@ export default function Composer({
             </button>
           </div>
         )}
+
         <p className="text-[11px] text-gray-500">
-          Only one video per post. Videos are not saved with notes; they’re sent directly when you post.
+          Images stay on this device and are never uploaded to Supabase. If you post to Bluesky, up to 4 images are sent with the text; only the text is synced to Supabase. Video is PRO only and sent directly when you post (kept as original bytes to avoid corruption).
         </p>
       </div>
-      )}
 
       <div className="mt-3 space-y-3">
         <div className="flex flex-wrap items-center gap-3 justify-between">

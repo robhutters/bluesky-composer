@@ -33,23 +33,45 @@ async function uploadBlob(accessJwt: string, dataUrl?: string | null) {
   return json?.blob || null;
 }
 
+async function uploadVideo(accessJwt: string, video: { buffer: Buffer; mime?: string }) {
+  const res = await fetch("https://bsky.social/xrpc/com.atproto.repo.uploadBlob", {
+    method: "POST",
+    headers: {
+      "Content-Type": video.mime || "video/mp4",
+      Authorization: `Bearer ${accessJwt}`,
+    },
+    body: video.buffer,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Video upload failed: ${res.status} ${detail}`.trim());
+  }
+  const json = await res.json();
+  console.log("[video] uploaded via uploadBlob");
+  return json?.blob;
+}
+
 export async function POST(req: Request) {
   try {
     const { identifier, appPassword, text, images, video, replyControl, replyListUri, replyTarget } = await req.json();
     if (!identifier || !appPassword || !text) {
       return NextResponse.json({ error: "Missing credentials or text" }, { status: 400 });
     }
-    const videoData =
-      video && typeof video?.data === "string"
-        ? {
-            data: video.data as string,
-            alt: typeof video.alt === "string" ? video.alt : "",
-            width: video.width,
-            height: video.height,
-            size: video.size,
-          }
+    const videoBuffer =
+      video?.bytes && Array.isArray(video.bytes)
+        ? Buffer.from(video.bytes)
         : null;
-    if (videoData?.size && videoData.size > 50 * 1024 * 1024) {
+    const videoData = video && videoBuffer
+      ? {
+          buffer: videoBuffer,
+          alt: typeof video.alt === "string" ? video.alt : "",
+          width: video.width,
+          height: video.height,
+          size: video.size,
+          mime: video.mime || "video/mp4",
+        }
+      : null;
+    if (videoData?.buffer && videoData.buffer.length > 50 * 1024 * 1024) {
       return NextResponse.json({ error: "Video too large (limit 50MB)" }, { status: 400 });
     }
     const imageArray: { data: string; alt?: string; width?: number; height?: number }[] = Array.isArray(images)
@@ -99,8 +121,8 @@ export async function POST(req: Request) {
     }
 
     let embed: any = undefined;
-    if (videoData) {
-      const blob = await uploadBlob(accessJwt, videoData.data);
+    if (videoData?.buffer) {
+      const blob = await uploadVideo(accessJwt, videoData);
       if (blob) {
         embed = {
           $type: "app.bsky.embed.video",
