@@ -11,6 +11,13 @@ type DiscoverItem = {
   authorDisplay: string;
   feedName?: string;
   images?: { thumb?: string; alt?: string }[];
+  reply?: {
+    parentAuthorHandle?: string;
+    parentAuthorDisplay?: string;
+    parentText?: string;
+    rootAuthorDisplay?: string;
+    rootAuthorHandle?: string;
+  };
 };
 
 type FeedTab = "discover" | "following" | "mutuals";
@@ -76,6 +83,8 @@ export default function DiscoverFeed({
             thumb: img?.fullsize || img?.thumb || img?.image,
             alt: img?.alt || "",
           })) || [];
+        const parentPost = item?.reply?.parent;
+        const rootPost = item?.reply?.root;
         return {
           uri: post?.uri,
           cid: post?.cid,
@@ -84,6 +93,15 @@ export default function DiscoverFeed({
           authorDisplay: post?.author?.displayName || post?.author?.handle || "",
           feedName,
           images,
+          reply: parentPost
+            ? {
+                parentAuthorHandle: parentPost?.author?.handle || "",
+                parentAuthorDisplay: parentPost?.author?.displayName || parentPost?.author?.handle || "",
+                parentText: parentPost?.record?.text || "",
+                rootAuthorDisplay: rootPost?.author?.displayName || rootPost?.author?.handle || "",
+                rootAuthorHandle: rootPost?.author?.handle || "",
+              }
+            : undefined,
         };
       }) || [],
     []
@@ -327,6 +345,28 @@ export default function DiscoverFeed({
                   onSelect(item);
                 }}
               >
+                {item.reply && (
+                  <div className="mb-2 text-xs text-slate-500 border-l-2 border-slate-200 pl-2">
+                    Replying to{" "}
+                    <span className="font-semibold text-slate-700">
+                      {item.reply.parentAuthorDisplay || item.reply.parentAuthorHandle || "unknown"}
+                    </span>
+                    {item.reply.rootAuthorHandle &&
+                      item.reply.rootAuthorHandle !== item.reply.parentAuthorHandle && (
+                        <span className="ml-1">
+                          in thread by{" "}
+                          <span className="font-semibold text-slate-700">
+                            {item.reply.rootAuthorDisplay || item.reply.rootAuthorHandle}
+                          </span>
+                        </span>
+                      )}
+                    {item.reply.parentText && (
+                      <div className="mt-1 italic text-[11px] text-slate-500 line-clamp-2">
+                        “{item.reply.parentText}”
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-semibold text-slate-900 text-sm">
                     {item.authorDisplay || item.authorHandle}

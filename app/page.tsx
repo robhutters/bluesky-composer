@@ -1167,6 +1167,9 @@ export default function MainPage() {
           <div className="space-y-4 w-full">
         {!user && (
           <>
+            <div className="mx-auto text-center">
+               <p className="mx-auto">A gamer felt frustrated with their experience on BlueSky, so built this app.</p>
+            </div>
             <Image
               src="/assets/quote.jpg"
               alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'"
@@ -1175,16 +1178,26 @@ export default function MainPage() {
               sizes="100vw"
               className="mx-auto mb-4 mt-4 sm:mt-8 w-full max-w-[600px] h-auto"
             />
-           
-            <h2 className="text-center">This is what your notes look like when stored in the cloud.</h2>
-            <Image 
+             <div className="mx-auto my-3 text-center">
+               <p className="mx-auto">You have direct access to your Discover, Mutuals, and Following feeds (auto-scrolls!).</p>
+            </div>
+            <Image
+              src="/assets/demo_gif_bsky.gif"
+              alt="Animated demo showing BlueSky Composer in action"
+              width={600}
+              height={338}
+              sizes="100vw"
+              className="mx-auto mb-4 w-full max-w-[600px] h-auto rounded-lg border border-gray-200 shadow-sm"
+            />
+            <h2 className="text-center">Your notes are stored securely on your device and in the cloud (PRO) .</h2>
+            <Image
               src="/assets/notes_encrypted.png"
               alt="Your notes are always encrypted! This is what it looks like: a random set of characters."
               width={600}
               height={200}
               sizes="100vw"
               className="mx-auto mb-6 sm:mb-8 w-full max-w-[600px] h-auto rounded lg border border-gray-200 shadow-sm"
-              />
+            />
           </>
         )}
 
@@ -1394,8 +1407,8 @@ export default function MainPage() {
         )}
 
       {!user && (
-        <div>
-          <div className="mt-8 mb-4 p-4 border rounded bg-white shadow-sm">
+        <div className="flex flex-col justify-center items-center">
+          <div className="mt-8 mb-4 p-4 max-w-[900px] border rounded bg-white shadow-sm">
             <h4 className="text-lg sm:text-xl md:text-2xl font-bold mb-2">PRO</h4>
             <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-1">Pay once, keep PRO forever. Price: <span className="font-semibold text-gray-800">€15</span>.</p>
             <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-3">Here’s what you get now and what’s coming soon:</p>
@@ -1446,8 +1459,8 @@ export default function MainPage() {
           </div>
           </div>
           <div className="mt-6 mb-4 p-4 border rounded bg-white shadow-sm" id="login-form">
-          <h4 className="text-base sm:text-lg font-semibold mb-2">What you get for free</h4>
-          <ul className="text-xs sm:text-sm text-gray-700 list-disc list-inside space-y-1">
+          <h4 className="text-base sm:text-xl font-semibold mb-2">What you get for free</h4>
+          <ul className="text-md sm:text-lg text-gray-700 list-disc list-inside space-y-1">
             <li>Local mode: drafts and saved notes stay on this device</li>
             <li>Write, copy, and delete notes without having to sign in</li>
             <li>Post directly to BlueSky (with the exception of Threads) with a local-only app password</li>
@@ -1455,7 +1468,7 @@ export default function MainPage() {
         </div>
         <div className="p-4 border mt-12 rounded bg-yellow-50">
             <p className="text-sm">
-              You’re browsing anonymously. Your draft and saved notes stay on this device. Sign in and upgrade to Pro to back up notes to the cloud.
+              You’re browsing anonymously. Your draft and saved notes stay on this device. 
             </p>
           </div>
           <Auth />
