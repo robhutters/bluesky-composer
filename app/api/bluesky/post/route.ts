@@ -34,13 +34,14 @@ async function uploadBlob(accessJwt: string, dataUrl?: string | null) {
 }
 
 async function uploadVideo(accessJwt: string, video: { buffer: Buffer; mime?: string }) {
+  const body = new Uint8Array(video.buffer);
   const res = await fetch("https://bsky.social/xrpc/com.atproto.repo.uploadBlob", {
     method: "POST",
     headers: {
       "Content-Type": video.mime || "video/mp4",
       Authorization: `Bearer ${accessJwt}`,
     },
-    body: video.buffer,
+    body,
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");

@@ -11,6 +11,7 @@ import Image from "next/image";
 import { useAuth } from "./providers/AuthProvider";
 import { loadImagesForKey, saveImagesForKey, deleteImagesForKey } from "./lib/indexedImages";
 import DiscoverFeed from "./components/DiscoverFeed";
+import MyTimelineFeed from "./components/MyTimelineFeed";
 
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
@@ -1286,6 +1287,13 @@ export default function MainPage() {
           <DiscoverFeed enabled={!!user && isPro} onSelect={setReplyTarget} />
         </div>
 
+        <section className="grid grid-cols-2 gap-6">
+             {user && (
+          <div className="max-w-[900px] mx-auto">
+            <MyTimelineFeed enabled={!!user} onSelect={setReplyTarget} />
+          </div>
+        )}
+
         {/* Notes + thread controls below the grid, full width */}
         {pinnedCount > 0 && (
           <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -1310,6 +1318,7 @@ export default function MainPage() {
           selectedForThread={threadSelection}
           onToggleThreadSelect={toggleThreadSelect}
         />
+        </section>
 
         {user && isPro && (
           <>
