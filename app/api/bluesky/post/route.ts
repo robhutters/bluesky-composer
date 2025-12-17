@@ -54,10 +54,20 @@ async function uploadVideo(accessJwt: string, video: { buffer: Buffer; mime?: st
 
 export async function POST(req: Request) {
   try {
-    const { identifier, appPassword, text, images, video, replyControl, replyListUri, replyTarget } = await req.json();
-    if (!identifier || !appPassword || !text) {
-      return NextResponse.json({ error: "Missing credentials or text" }, { status: 400 });
+    const {
+      identifier,
+      appPassword,
+      text,
+      images,
+      video,
+      replyControl,
+      replyListUri,
+      replyTarget,
+    } = await req.json();
+    if (!identifier || !appPassword) {
+      return NextResponse.json({ error: "Missing credentials" }, { status: 400 });
     }
+    const normalizedText = typeof text === "string" ? text : "";
     const videoBuffer =
       video?.bytes && Array.isArray(video.bytes)
         ? Buffer.from(video.bytes)
@@ -96,6 +106,15 @@ export async function POST(req: Request) {
     if (!videoData && imageArray.some((img) => img.data.startsWith("data:image/gif"))) {
       return NextResponse.json(
         { error: "Animated GIFs are not supported for posting right now. Please use static images." },
+        { status: 400 }
+      );
+    }
+
+    const hasText = normalizedText.trim().length > 0;
+    const hasMedia = imageArray.length > 0 || !!videoData?.buffer;
+    if (!hasText && !hasMedia) {
+      return NextResponse.json(
+        { error: "Add text or at least one image/video before posting." },
         { status: 400 }
       );
     }
@@ -158,7 +177,7 @@ export async function POST(req: Request) {
 
     const record: any = {
       $type: "app.bsky.feed.post",
-      text,
+      text: normalizedText,
       createdAt: new Date().toISOString(),
     };
     if (replyTarget?.uri && replyTarget?.cid) {

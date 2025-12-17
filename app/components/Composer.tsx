@@ -381,8 +381,13 @@ export default function Composer({
   };
 
   const postToBluesky = async () => {
-    const safe = sanitizePlainText(text).trim();
-    if (!safe) return;
+    const safe = sanitizePlainText(text);
+    const hasMedia = images.length > 0 || !!video;
+    if (!safe.trim() && !hasMedia) {
+      setPostMessage("Add text or select media before posting.");
+      setTimeout(() => setPostMessage(null), 3000);
+      return;
+    }
     if (!bskyHandle || !bskyAppPassword) {
       setPostMessage("Add your Bluesky handle and app password first.");
       setTimeout(() => setPostMessage(null), 3000);
@@ -586,6 +591,16 @@ export default function Composer({
     }
   };
 
+  const attachmentsSelected = images.length > 0 || !!video;
+  const attachmentSummary = !attachmentsSelected
+    ? "No image/video selected"
+    : [
+        images.length ? `${images.length} image${images.length > 1 ? "s" : ""}` : null,
+        video ? "1 video selected" : null,
+      ]
+        .filter(Boolean)
+        .join(" • ");
+  const canPost = text.length > 0 || attachmentsSelected;
 
   return (
     <div className="w-full max-w-[600px] mx-auto mt-4 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
@@ -748,32 +763,23 @@ export default function Composer({
             Images (up to 4, png/jpg) {isPro ? " • 1 video (mp4)" : ""}
           </span>
         </div>
+        <div className="text-xs font-medium text-gray-600">{attachmentSummary}</div>
         <div className="flex flex-wrap gap-3">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition filter grayscale hover:grayscale-0 hover:bg-gray-100 hover:shadow-md"
+          >
+            {images.length ? "Add/Change images" : "Choose images"}
+          </button>
+          {isPro && (
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition filter grayscale hover:grayscale-0 hover:bg-gray-100 hover:shadow-md"
+              onClick={() => videoInputRef.current?.click()}
+              className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-100 hover:shadow-md"
             >
-              {images.length ? "Add/Change images" : "Choose images"}
+              {video ? "Replace video" : "Choose video"}
             </button>
-            <span className="text-xs text-gray-600">
-              {images.length ? `${images.length} selected` : "No images selected"}
-            </span>
-          </div>
-          {isPro && (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => videoInputRef.current?.click()}
-                className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-100 hover:shadow-md"
-              >
-                {video ? "Replace video" : "Choose video"}
-              </button>
-              <span className="text-xs text-gray-600">
-                {video ? `${video.name}` : "No video selected"}
-              </span>
-            </div>
           )}
         </div>
 
@@ -922,7 +928,7 @@ export default function Composer({
         )}
 
         <p className="text-[11px] text-gray-500">
-          Images stay on this device and are never uploaded to Supabase. If you post to Bluesky, up to 4 images are sent with the text; only the text is synced to Supabase. Video is PRO only and sent directly when you post (kept as original bytes to avoid corruption).
+          Images/videos stay on this device and are never uploaded to Supabase. If you post to Bluesky, up to 4 images are sent with the text; only the text is synced to Supabase. Video is PRO only and sent directly when you post.
         </p>
       </div>
 
@@ -963,22 +969,22 @@ export default function Composer({
         <div className="flex gap-2 justify-end flex-wrap">
           <button
             type="button"
-          onClick={() => {
-            setText("");
-            setImages([]);
-            setVideo(null);
-            if (fileInputRef.current) fileInputRef.current.value = "";
-            if (videoInputRef.current) videoInputRef.current.value = "";
-          }}
-          className="px-3 py-2 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50"
-        >
-          Clear input field
-        </button>
+            onClick={() => {
+              setText("");
+              setImages([]);
+              setVideo(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+              if (videoInputRef.current) videoInputRef.current.value = "";
+            }}
+            className="px-3 py-2 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50"
+          >
+            Clear input field
+          </button>
           <button
             onClick={postToBluesky}
-            disabled={text.length === 0 || posting}
+            disabled={!canPost || posting}
             className={`px-3 py-2 rounded-md text-white text-sm font-semibold transition ${
-              text.length === 0 || posting
+              !canPost || posting
                 ? "bg-sky-400 cursor-not-allowed opacity-60"
                 : "bg-sky-600 hover:bg-sky-700"
             }`}
