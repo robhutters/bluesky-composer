@@ -1151,7 +1151,7 @@ export default function MainPage() {
           <>
            
           
-            <section id="app-password-steps" className="mb-12 space-y-6">
+            <section id="app-password-steps" className="my-24 space-y-6">
               <div className="text-center">
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">No account required</p>
                 <h3 className="text-3xl font-bold text-slate-900 mt-2">All you need is a BlueSky app password</h3>
@@ -1186,7 +1186,7 @@ export default function MainPage() {
           </>
         )}
 
-        <div className="grid grid-cols-1 gap-6 items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,640px)_minmax(0,520px)]">
+        <div className="mt-24 grid grid-cols-1 gap-6 items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,640px)_minmax(0,520px)]">
           <div className="space-y-4" id="composer-root">
             {replyTarget && (
               <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
@@ -1382,7 +1382,7 @@ export default function MainPage() {
         </>
 
       <div className="flex flex-col justify-center items-center">
-        <div className="mt-8 mb-4 p-4 max-w-[900px] border rounded bg-white shadow-sm">
+        <div className="mt-24 mb-4 p-4 max-w-[900px] border rounded bg-white shadow-sm">
           <h4 className="text-lg sm:text-xl md:text-2xl font-bold mb-2">Early Access Roadmap</h4>
           <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-3">
             You’re getting everything for free while I build out the feature set. Here’s what’s live (and what’s coming) during early access:
@@ -1418,7 +1418,7 @@ export default function MainPage() {
         </div>
      
       </div>
-      <footer className="mt-12 text-center text-gray-500 text-sm">
+      <footer className="mt-24 text-center text-gray-500 text-sm">
         &copy; {new Date().getFullYear()} BlueSky Composer. Built with NextJS, React, TailwindCSS, and ❤️ by <a href="https://robhutters.com" className="underline">Rob Hutters</a>. Hosted on <a href="https://vercel.com" className="underline">Vercel</a>.
       </footer>
     </div>
