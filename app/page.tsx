@@ -1059,27 +1059,24 @@ export default function MainPage() {
               <p className="text-base sm:text-lg text-slate-700 font-[500]">
                A desktop-friendly notes app for BlueSky. 
               </p>
-              <div className="flex flex-wrap gap-2">
-                <div className="mr-3">
+              <div className="flex flex-col md:flex-row flex-wrap gap-2">
+               
                    <span className="mr-2 inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-rose-400 inline-block" />
-                  Try it for free (no account)
+                  No account necessary
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-sky-400 inline-block" />
                   Post to BlueSky with your app password
                 </span>
-                </div>
-               <div className="mr-3">
-                <span className="mr-2 inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 inline-block" />
-                  Feeds, threads, and sync included in early access
-                </span>
+             
+              
+               
                 <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-purple-400 inline-block" />
                   Video posting ready today
                 </span>
-               </div>
+          
                 
               </div>
             </div>
@@ -1237,14 +1234,7 @@ export default function MainPage() {
             {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
             {!user && (
               <div className="mb-3 w-full flex flex-wrap gap-2 justify-center">
-                <div className="inline-flex items-center gap-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
-                  <span className="h-2 w-2 rounded-full bg-rose-500 inline-block" />
-                  Try it for free without signing in!
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 shadow-sm">
-                  <span className="h-2 w-2 rounded-full bg-sky-500 inline-block" />
-                  Grab an app password to post directly to BlueSky!
-                </div>
+            
               </div>
             )}
         <Composer
