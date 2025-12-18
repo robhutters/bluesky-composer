@@ -4,7 +4,6 @@ import { supabase } from "./lib/supabaseClient";
 import { contentKey, mergeLocalAndCloud, formatNotesToMarkdown, canExportNotes, sortWithPins } from "./lib/noteUtils";
 import Composer from "./components/Composer";
 import NotesList from "./components/NotesList";
-import Auth from "./components/Auth";
 import { FloatingProfile } from "./components/FloatingProfile";
 import LogoutButton from "./components/LogoutButton";
 import Image from "next/image";
@@ -12,12 +11,56 @@ import { useAuth } from "./providers/AuthProvider";
 import { loadImagesForKey, saveImagesForKey, deleteImagesForKey } from "./lib/indexedImages";
 import DiscoverFeed from "./components/DiscoverFeed";
 
+const HERO_FEATURES = [
+  {
+    title: "Composer built for 300 characters",
+    description:
+      "See the exact BlueSky limit, auto-save at 300 chars, drop emoji, and clip long thoughts into threads instantly.",
+  },
+  {
+    title: "Desktop feed browser",
+    description:
+      "Scroll Discover, Following, Mutuals, and your own timeline side-by-side. Tap any card to preload replies in the Composer.",
+  },
+  {
+    title: "Media + threads without fuss",
+    description:
+      "Post up to four images or inline video, export Markdown, and keep encrypted backups without ever leaving your browser.",
+  },
+  {
+    title: "Gamer-first workflow",
+    description:
+      "Keyboard shortcuts, drag-and-drop organization, Today picker, and quick copy buttons help you ship a take and get back to your games.",
+  },
+];
+
+const APP_PASSWORD_STEPS = [
+  {
+    title: "Step 1 · Open BlueSky settings",
+    description: "On the BlueSky app or web client, open the sidebar and tap Settings.",
+    image: "/assets/instructions/step_1.jpg",
+  },
+  {
+    title: "Step 2 · Privacy & Security",
+    description: "Head to Privacy & Security → App Passwords. This is where BlueSky issues secondary passwords.",
+    image: "/assets/instructions/step_2.jpg",
+  },
+  {
+    title: "Step 3 · Create an app password",
+    description: "Create a new password (name it anything). BlueSky shows it once—copy it somewhere safe.",
+    image: "/assets/instructions/step_3.jpg",
+  },
+  {
+    title: "Step 4 · Paste it into BlueSky Composer",
+    description: "Inside the Composer, paste your handle + app password. That’s all you need to post directly.",
+    image: null,
+  },
+];
+
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
-const BANNER_SEEN_KEY = "bsky-composer-banner-seen";
 const LOCAL_IMAGE_MAP_KEY = "bsky-composer-note-images";
-const GIFT_OFFER_KEY = "bsky-composer-gift-offer";
 const LOCAL_ORDER_KEY = "bsky-composer-note-order";
 const MAX_CHARACTERS = 300;
 
@@ -47,16 +90,21 @@ export default function MainPage() {
   const [editMessage, setEditMessage] = useState<string | null>(null);
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
-  const [showBanner, setShowBanner] = useState(false);
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const [pinInfo, setPinInfo] = useState<string | null>(null);
-  const [giftOfferCode, setGiftOfferCode] = useState<string | null>(null);
   const [notesLoading, setNotesLoading] = useState(false);
   const lastStableNotesRef = useRef<any[]>([]);
   const [replyTarget, setReplyTarget] = useState<any | null>(null);
 
-  const scrollToAuth = () => {
-    const el = typeof document !== "undefined" ? document.getElementById("login-form") : null;
+  const scrollToInstructions = () => {
+    if (typeof document === "undefined") return;
+    const el = document.getElementById("app-password-steps");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const scrollToComposer = () => {
+    if (typeof document === "undefined") return;
+    const el = document.getElementById("composer-root");
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -90,46 +138,10 @@ export default function MainPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const vid = ensureVisitorId();
-    const seen = window.localStorage.getItem(BANNER_SEEN_KEY);
-    if (!seen) {
-      setShowBanner(true);
-      window.localStorage.setItem(BANNER_SEEN_KEY, "1");
-      if (vid) {
-        void fetch("/api/track-save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId: vid, kind: "promo_banner_shown" }),
-        }).catch(() => {});
-      }
-    }
+    ensureVisitorId();
   }, []);
 
-  // Offer a random unused gift code to non-logged-in visitors (once per client)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (user) return; // don't offer to logged-in users
-    const vid = ensureVisitorId();
-    if (!vid) return;
-    const offered = window.localStorage.getItem(GIFT_OFFER_KEY);
-    if (offered) {
-      setGiftOfferCode(offered);
-      return;
-    }
-    void fetch("/api/gift-code", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: vid }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.code) {
-          setGiftOfferCode(data.code);
-          window.localStorage.setItem(GIFT_OFFER_KEY, data.code);
-        }
-      })
-      .catch(() => {});
-  }, [user]);
+  // Early access mode (no gift code or paywall)
 
   useEffect(() => {
     if (!user) {
@@ -1051,21 +1063,21 @@ export default function MainPage() {
                 <div className="mr-3">
                    <span className="mr-2 inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-rose-400 inline-block" />
-                  Try it for free (no sign-in)
+                  Try it for free (no account)
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-sky-400 inline-block" />
-                  Post to Bluesky for free
+                  Post to BlueSky with your app password
                 </span>
                 </div>
                <div className="mr-3">
                 <span className="mr-2 inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-emerald-400 inline-block" />
-                  Threads & sync are PRO
+                  Feeds, threads, and sync included in early access
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                   <span className="h-2 w-2 rounded-full bg-purple-400 inline-block" />
-                  Video posting is PRO
+                  Video posting ready today
                 </span>
                </div>
                 
@@ -1088,7 +1100,7 @@ export default function MainPage() {
                       Post to Bluesky (free)
                     </div>
                     <div className="flex-1 rounded-md border border-pink-200 bg-pink-50 text-pink-700 text-center py-2 text-xs font-semibold shadow">
-                      Thread (PRO)
+                      Thread preview
                     </div>
                   </div>
                 </div>
@@ -1105,36 +1117,6 @@ export default function MainPage() {
         {syncMessage && (
           <div className="mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 shadow-sm">
             {syncMessage}
-          </div>
-        )}
-        {showBanner && (
-          <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <div className="font-semibold">Limited beta offer: €15 lifetime PRO</div>
-              <div className="text-xs text-amber-700">Available for a short time while the app is in beta.</div>
-            </div>
-            <button
-              className="self-start sm:self-auto px-3 py-1 text-xs font-semibold rounded border border-amber-300 bg-white text-amber-700 hover:bg-amber-100"
-              onClick={() => setShowBanner(false)}
-            >
-              Got it
-            </button>
-          </div>
-        )}
-        {giftOfferCode && !user && (
-          <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <div className="font-semibold">You won a free code to PRO (forever), congratulations!</div>
-              <div className="text-xs text-emerald-700">
-                Use it at checkout: <span className="font-mono">{giftOfferCode}</span>
-              </div>
-            </div>
-            <button
-              className="self-start sm:self-auto px-3 py-1 text-xs font-semibold rounded border border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-100"
-              onClick={() => navigator.clipboard.writeText(giftOfferCode).catch(() => {})}
-            >
-              Copy
-            </button>
           </div>
         )}
         {(threadMessage || exportMessage || deleteMessage || editMessage || storageMessage) && (
@@ -1162,47 +1144,50 @@ export default function MainPage() {
           </div>
         )}
 
-        {/* Main two-column layout: left = composer/notes; right = Discover (PRO) */}
+        {/* Main layout: composer/notes + Discover feed */}
         <div className="">
           <div className="space-y-4 w-full">
         {!user && (
           <>
-            <div className="mx-auto text-center">
-               <p className="mx-auto">A gamer felt frustrated with their experience on BlueSky, so built this app.</p>
-            </div>
-            <Image
-              src="/assets/quote.jpg"
-              alt="quote from a bluesky user: 'i need a notes app that has the character limit for bluesky and where it cuts down to the next line cuz if i have one more post with a lone word hanging off the bottom i may perish'"
-              width={600}
-              height={200}
-              sizes="100vw"
-              className="mx-auto mb-4 mt-4 sm:mt-8 w-full max-w-[600px] h-auto"
-            />
-             <div className="mx-auto my-3 text-center">
-               <p className="mx-auto">You have direct access to your Discover, Mutuals, and Following feeds (auto-scrolls!).</p>
-            </div>
-            <Image
-              src="/assets/demo_gif_bsky.gif"
-              alt="Animated demo showing BlueSky Composer in action"
-              width={600}
-              height={338}
-              sizes="100vw"
-              className="mx-auto mb-4 w-full max-w-[600px] h-auto rounded-lg border border-gray-200 shadow-sm"
-            />
-            <h2 className="text-center">Your notes are stored securely on your device and in the cloud (PRO) .</h2>
-            <Image
-              src="/assets/notes_encrypted.png"
-              alt="Your notes are always encrypted! This is what it looks like: a random set of characters."
-              width={600}
-              height={200}
-              sizes="100vw"
-              className="mx-auto mb-6 sm:mb-8 w-full max-w-[600px] h-auto rounded lg border border-gray-200 shadow-sm"
-            />
+           
+          
+            <section id="app-password-steps" className="mb-12 space-y-6">
+              <div className="text-center">
+                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">No account required</p>
+                <h3 className="text-3xl font-bold text-slate-900 mt-2">All you need is a BlueSky app password</h3>
+                <p className="text-sm text-slate-600 mt-2">Follow these quick steps once. Composer stores your handle + app password securely in your browser.</p>
+              </div>
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                {APP_PASSWORD_STEPS.map((step, idx) => (
+                  <div key={step.title} className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Step {idx + 1}</p>
+                      <span className="text-[11px] text-slate-400">{idx < 3 ? "BlueSky app" : "Composer"}</span>
+                    </div>
+                    <h4 className="text-lg font-semibold text-slate-900">{step.title}</h4>
+                    <p className="text-sm text-slate-700">{step.description}</p>
+                    {step.image ? (
+                      <Image
+                        src={step.image}
+                        alt={step.title}
+                        width={400}
+                        height={280}
+                        className="w-full rounded-xl border border-slate-200 shadow-sm object-cover"
+                      />
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-500">
+                        Paste the password into the Composer’s Bluesky login section.
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
           </>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,560px)_minmax(0,520px)] gap-6 items-start">
-          <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-6 items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,640px)_minmax(0,520px)]">
+          <div className="space-y-4" id="composer-root">
             {replyTarget && (
               <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
@@ -1224,7 +1209,7 @@ export default function MainPage() {
                   </button>
                 </div>
                 <p className="mt-2 whitespace-pre-wrap break-words text-slate-800">
-                  {replyTarget.text || "(no text)"}
+                  {replyTarget.contentSummary || replyTarget.text || "(no text)"}
                 </p>
                 {Array.isArray(replyTarget.images) && replyTarget.images.length > 0 && (
                   <div className="mt-3 grid grid-cols-1 gap-3">
@@ -1247,7 +1232,7 @@ export default function MainPage() {
             )}
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4 max-w-[650px] mx-auto">
             {user ? <div className="mt-2"><LogoutButton /></div> : null }
             {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
             {!user && (
@@ -1267,23 +1252,11 @@ export default function MainPage() {
           onLocalSave={addLocalNote}
           user={user}
           isPro={plan === "pro"}
-          proCheckoutUrl={process.env.NEXT_PUBLIC_PRO_CHECKOUT_URL || ""}
           replyTarget={replyTarget ? { uri: replyTarget.uri, cid: replyTarget.cid } : null}
         />
-            {!user && (
-              <div className="mt-4 mb-2 flex justify-center">
-                <button
-                  type="button"
-                  onClick={scrollToAuth}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
-                >
-                  Sign in to unlock PRO
-                </button>
-              </div>
-            )}
           </div>
 
-          <DiscoverFeed enabled={!!user && isPro} onSelect={setReplyTarget} />
+          <DiscoverFeed enabled onSelect={setReplyTarget} />
         </div>
 
         {/* Notes + thread controls below the grid, full width */}
@@ -1304,39 +1277,38 @@ export default function MainPage() {
           onTogglePin={togglePin}
           onAddTag={addTag}
           onRemoveTag={removeTag}
-          canOrganize={!!user && isPro}
+          canOrganize
           allowThreadSelect
-          threadSelectEnabled={!!user && isPro}
+          threadSelectEnabled
           selectedForThread={threadSelection}
           onToggleThreadSelect={toggleThreadSelect}
         />
 
-        {user && isPro && (
-          <>
-            {selectedThreadNotes.length > 0 && (
-              <div className="mt-4 w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
-                  <span className="text-xs text-sky-700">
-                    Posts publish in this order (pinned stay first).
-                  </span>
-                </div>
-                <ol className="mt-2 space-y-1 text-sm text-sky-900">
-                  {selectedThreadNotes.map((n, idx) => (
-                    <li key={n.id} className="flex items-start gap-2">
-                      <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
-                        {idx + 1}
-                      </span>
-                      <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
-                    </li>
-                  ))}
-                </ol>
+        <>
+          {selectedThreadNotes.length > 0 && (
+            <div className="mt-4 w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
+                <span className="text-xs text-sky-700">
+                  Posts publish in this order (pinned stay first).
+                </span>
               </div>
-            )}
-            <div className="mt-4 w-full lg:justify-center flex flex-wrap flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
-              <div className="flex flex-col gap-1 w-full sm:w-auto">
-                <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
-                <select
+              <ol className="mt-2 space-y-1 text-sm text-sky-900">
+                {selectedThreadNotes.map((n, idx) => (
+                  <li key={n.id} className="flex items-start gap-2">
+                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
+                      {idx + 1}
+                    </span>
+                    <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          <div className="mt-4 w-full lg:justify-center flex flex-wrap flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
+            <div className="flex flex-col gap-1 w-full sm:w-auto">
+              <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
+              <select
                   value={replyControl}
                   onChange={(e) => setReplyControl(e.target.value as any)}
                   className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
@@ -1357,18 +1329,22 @@ export default function MainPage() {
                   />
                 )}
               </div>
-            <div className="flex flex-row mt-4 items-center gap-2">
+          <div className="flex flex-row mt-4 items-center gap-2 flex-wrap">
                 <button
                 onClick={() => exportCloudNotes("json")}
-                disabled={exporting}
-                className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${exporting ? "bg-indigo-400 cursor-wait" : "bg-indigo-600 hover:bg-indigo-700"}`}
+                disabled={exporting || !user}
+                className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                  exporting || !user ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
+                }`}
               >
                 {exporting ? "Exporting..." : "Export notes (JSON)"}
               </button>
               <button
                 onClick={() => exportCloudNotes("md")}
-                disabled={exporting}
-                className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${exporting ? "bg-purple-400 cursor-wait" : "bg-purple-600 hover:bg-purple-700"}`}
+                disabled={exporting || !user}
+                className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                  exporting || !user ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
+                }`}
               >
                 {exporting ? "Exporting..." : "Export notes (Markdown)"}
               </button>
@@ -1402,80 +1378,48 @@ export default function MainPage() {
                 Copy selected (thread)
               </button>
             </div>
-            </div>
-          </>
-        )}
+          </div>
+        </>
 
-      {!user && (
-        <div className="flex flex-col justify-center items-center">
-          <div className="mt-8 mb-4 p-4 max-w-[900px] border rounded bg-white shadow-sm">
-            <h4 className="text-lg sm:text-xl md:text-2xl font-bold mb-2">PRO</h4>
-            <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-1">Pay once, keep PRO forever. Price: <span className="font-semibold text-gray-800">€15</span>.</p>
-            <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-3">Here’s what you get now and what’s coming soon:</p>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm sm:text-base md:text-lg text-left border">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 border text-sm sm:text-base md:text-lg">Feature</th>
-                    <th className="px-3 py-2 border text-sm sm:text-base md:text-lg">Status</th>
+      <div className="flex flex-col justify-center items-center">
+        <div className="mt-8 mb-4 p-4 max-w-[900px] border rounded bg-white shadow-sm">
+          <h4 className="text-lg sm:text-xl md:text-2xl font-bold mb-2">Early Access Roadmap</h4>
+          <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-3">
+            You’re getting everything for free while I build out the feature set. Here’s what’s live (and what’s coming) during early access:
+          </p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full	text-sm sm:text-base md:text-lg text-left border">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 border text-sm sm:text-base md:text-lg">Feature</th>
+                  <th className="px-3 py-2 border text-sm sm:text-base md:text-lg">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { feature: "Post threads to Bluesky", status: "Available now" },
+                  { feature: "Post videos to Bluesky", status: "Available now" },
+                  { feature: "Organize notes (drag/drop + up/down + tags/pins)", status: "Available now" },
+                  { feature: "Discover/Following/Mutuals feeds", status: "Available now" },
+                  { feature: "Export notes (JSON + Markdown)", status: "Available now" },
+                  { feature: "Version history & restore", status: "Coming later" },
+                  { feature: "Advanced search & filters", status: "Coming later" },
+                ].map((row) => (
+                  <tr key={row.feature}>
+                    <td className="px-3 py-2 border">{row.feature}</td>
+                    <td className={`px-3 py-2 border ${row.status.includes("Available") ? "text-emerald-700" : "text-orange-600"}`}>
+                      {row.status}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { feature: "Post threads to Bluesky", status: "Available (PRO)" },
-                    { feature: "Post videos to Bluesky", status: "Available (PRO)" },
-                    { feature: "Organize your notes (drag & drop + up/down + tags/pins)", status: "Available (PRO)" },
-                    { feature: "Copy selected notes to clipboard as text", status: "Available (PRO)" },
-                    { feature: "Notes synced to the cloud (encrypted)", status: "Available (PRO)" },
-                    { feature: "Delete protection (notes and metadata deleted across local/cloud)", status: "Available (PRO)" },
-                    { feature: "Export notes (JSON + Markdown with tags/images included)", status: "Available (PRO)" },
-                    { feature: "Version history & restore", status: "Coming soon (PRO)" },
-                    { feature: "Advanced search & filters", status: "Coming soon (PRO)" },
-                  ].map((row, idx) => (
-                    <tr
-                      key={row.feature}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData("text/plain", String(idx));
-                        e.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = "move";
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        // Cosmetic drag affordance only; no reordering needed
-                      }}
-                    >
-                      <td className="px-3 py-2 border">{row.feature}</td>
-                      <td className={`px-3 py-2 border ${row.status.toLowerCase().includes("available") ? "text-emerald-700" : "text-orange-600"}`}>
-                        {row.status}
-                      </td>
-                    </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          </div>
-          <div className="mt-6 mb-4 p-4 border rounded bg-white shadow-sm" id="login-form">
-          <h4 className="text-base sm:text-xl font-semibold mb-2">What you get for free</h4>
-          <ul className="text-md sm:text-lg text-gray-700 list-disc list-inside space-y-1">
-            <li>Local mode: drafts and saved notes stay on this device</li>
-            <li>Write, copy, and delete notes without having to sign in</li>
-            <li>Post directly to BlueSky (with the exception of Threads) with a local-only app password</li>
-          </ul>
         </div>
-        <div className="p-4 border mt-12 rounded bg-yellow-50">
-            <p className="text-sm">
-              You’re browsing anonymously. Your draft and saved notes stay on this device. 
-            </p>
-          </div>
-          <Auth />
-        </div>
-      )}
+     
+      </div>
       <footer className="mt-12 text-center text-gray-500 text-sm">
-        &copy; {new Date().getFullYear()} BlueSky Composer. Built with NextJS, React, TailwindCSS, <a href="https://supabase.com" className="underline">Supabase</a> and ❤️ by <a href="https://robhutters.com" className="underline">Rob Hutters</a>. Hosted on <a href="https://vercel.com" className="underline">Vercel</a>.
+        &copy; {new Date().getFullYear()} BlueSky Composer. Built with NextJS, React, TailwindCSS, and ❤️ by <a href="https://robhutters.com" className="underline">Rob Hutters</a>. Hosted on <a href="https://vercel.com" className="underline">Vercel</a>.
       </footer>
     </div>
   </div>

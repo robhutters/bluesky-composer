@@ -59,7 +59,7 @@ export default function NotesList({
   return (
     <div className="mt-6 max-w-[700px] mx-auto">
       <h3 className="text-lg font-semibold mb-3">Your Notes</h3>
-      <p className="text-xs text-gray-600 mb-2">Drag and drop to reorder your notes (PRO only). Use the up/down buttons below (PRO only).</p>
+      <p className="text-xs text-gray-600 mb-2">Drag and drop to reorder your notes. Use the up/down buttons below for quick adjustments.</p>
       {(!notes || notes.length === 0) && (
         <div className="mb-4 rounded border-2 border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-600">
           No notes to display yet.

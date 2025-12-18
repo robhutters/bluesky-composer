@@ -12,6 +12,7 @@ type DiscoverItem = {
   feedName?: string;
   images?: { thumb?: string; alt?: string }[];
   indexedAt?: string;
+  contentSummary?: string;
   reply?: {
     parentAuthorHandle?: string;
     parentAuthorDisplay?: string;
@@ -100,10 +101,18 @@ export default function DiscoverFeed({
           })) || [];
         const parentPost = item?.reply?.parent;
         const rootPost = item?.reply?.root;
+        const baseText = typeof record?.text === "string" ? record.text : "";
+        const normalized = baseText.trim();
+        const summary = normalized
+          ? baseText
+          : images.length
+            ? "Media-only post"
+            : "Original post has no visible text.";
         return {
           uri: post?.uri,
           cid: post?.cid,
-          text: record?.text || "",
+          text: baseText,
+          contentSummary: summary,
           authorHandle: post?.author?.handle || "",
           authorDisplay: post?.author?.displayName || post?.author?.handle || "",
           feedName,
@@ -483,7 +492,7 @@ export default function DiscoverFeed({
                     )}
                   </div>
                   <p className="mt-3 text-[0.95rem] leading-relaxed text-slate-900 whitespace-pre-wrap break-words">
-                    {item.text || "(no text)"}
+                    {item.contentSummary || item.text || "(no text)"}
                   </p>
                   {Array.isArray(item.images) && item.images.length > 0 && (
                     <div className="mt-3 grid grid-cols-1 gap-3">

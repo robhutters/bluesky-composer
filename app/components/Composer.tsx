@@ -14,19 +14,16 @@ export default function Composer({
   onLocalSave,
   user,
   isPro,
-  proCheckoutUrl,
   replyTarget,
 }: {
   onNoteSaved: () => void;
   onLocalSave: (content: string, images?: { data: string; alt: string }[]) => void;
   user: any;
   isPro: boolean;
-  proCheckoutUrl?: string;
   replyTarget?: { uri: string; cid: string } | null;
 }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [hasAutoSaved, setHasAutoSaved] = useState(false);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [visitorId, setVisitorId] = useState<string | null>(null);
@@ -52,8 +49,6 @@ export default function Composer({
   const [posting, setPosting] = useState(false);
   const [postMessage, setPostMessage] = useState<string | null>(null);
   const hasBskyCreds = Boolean(bskyHandle && bskyAppPassword);
-  const [giftCode, setGiftCode] = useState("");
-  const [giftLoading, setGiftLoading] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
   const [replyControl, setReplyControl] = useState<
     "anyone" | "no_replies" | "mentions" | "followers" | "following" | "list"
@@ -107,14 +102,6 @@ export default function Composer({
       /* ignore */
     }
   }, []);
-
-  // Clear video selection when not PRO
-  useEffect(() => {
-    if (!isPro) {
-      setVideo(null);
-      if (videoInputRef.current) videoInputRef.current.value = "";
-    }
-  }, [isPro]);
 
   const saveBskyCreds = () => {
     if (!bskyHandle.trim() || !bskyAppPassword.trim()) {
@@ -404,12 +391,6 @@ export default function Composer({
     }
     setPostMessage("Processing your request... this may take a moment.");
     try {
-      if (video && !isPro) {
-        setPostMessage("Video posting is a PRO feature. Remove the video or upgrade to PRO.");
-        setTimeout(() => setPostMessage(null), 4000);
-        setPosting(false);
-        return;
-      }
       const totalBytes = images.reduce((sum, img) => sum + dataUrlSizeBytes(img.data), 0);
       if (totalBytes > 3_600_000) {
         setPostMessage("Images are still too large; try fewer or smaller images.");
@@ -549,48 +530,6 @@ export default function Composer({
   };
 
 
-  const startCheckout = async () => {
-    if (!user) {
-      setFlashMessage("Please sign in first.");
-      setTimeout(() => setFlashMessage(null), 3000);
-      return;
-    }
-
-    if (proCheckoutUrl) {
-      window.open(proCheckoutUrl, "_blank", "noopener");
-      return;
-    }
-
-    setCheckoutLoading(true);
-    try {
-      const visitor =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem(LOCAL_VISITOR_KEY)
-          : null;
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not logged in");
-
-      const res = await fetch("/api/checkout/pro", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ clientId: visitor || undefined }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body?.url) {
-        throw new Error(body?.error || "Failed to start checkout");
-      }
-      window.location.href = body.url as string;
-    } catch (err: any) {
-      setFlashMessage(`Upgrade failed: ${err?.message || "Unknown error"}`);
-      setTimeout(() => setFlashMessage(null), 4000);
-    } finally {
-      setCheckoutLoading(false);
-    }
-  };
-
   const attachmentsSelected = images.length > 0 || !!video;
   const attachmentSummary = !attachmentsSelected
     ? "No image/video selected"
@@ -611,20 +550,9 @@ export default function Composer({
         </div>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {user ? (
-          <>
-            <span className={`px-2 py-1 text-xs rounded ${isPro ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-orange-50 text-orange-700 border border-orange-200"}`}>
-              {isPro ? "Cloud sync now available" : "Cloud sync is a Pro feature"}
-            </span>
-            <span className="px-2 py-1 text-[10px] font-semibold rounded bg-orange-100 text-orange-800 border border-orange-200">
-              PRO
-            </span>
-          </>
-        ) : (
-          <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 border border-gray-200">
-            Local mode
-          </span>
-        )}
+        <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 border border-gray-200">
+          Local mode (no account required)
+        </span>
         {bskyLinked && (
           <div className="flex items-center gap-2">
             <span className="px-2 py-1 text-xs rounded border border-sky-200 bg-sky-50 text-sky-700 font-semibold">
@@ -648,18 +576,6 @@ export default function Composer({
             </button>
           </div>
         )}
-        {!isPro && user ? (
-          <button
-            type="button"
-            onClick={startCheckout}
-            disabled={checkoutLoading}
-            className={`px-3 py-1 text-xs font-semibold rounded text-white transition shadow-sm ${
-              checkoutLoading ? "bg-blue-400 cursor-wait" : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {checkoutLoading ? "Loading..." : "Upgrade to Pro"}
-          </button>
-        ) : null}
       </div>
 
       {(!bskyLinked || showBskyForm) && (
@@ -760,7 +676,7 @@ export default function Composer({
         <div className="flex items-center justify-between flex-wrap gap-2">
           <label className="block text-sm font-semibold text-gray-800">Media</label>
           <span className="text-[11px] text-gray-600">
-            Images (up to 4, png/jpg) {isPro ? " • 1 video (mp4)" : ""}
+            Images (up to 4, png/jpg) • 1 video (mp4)
           </span>
         </div>
         <div className="text-xs font-medium text-gray-600">{attachmentSummary}</div>
@@ -772,15 +688,13 @@ export default function Composer({
           >
             {images.length ? "Add/Change images" : "Choose images"}
           </button>
-          {isPro && (
-            <button
-              type="button"
-              onClick={() => videoInputRef.current?.click()}
-              className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-100 hover:shadow-md"
-            >
-              {video ? "Replace video" : "Choose video"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => videoInputRef.current?.click()}
+            className="rounded-md border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-100 hover:shadow-md"
+          >
+            {video ? "Replace video" : "Choose video"}
+          </button>
         </div>
 
         <input
@@ -813,7 +727,6 @@ export default function Composer({
           }}
         />
 
-        {isPro && (
         <input
           ref={videoInputRef}
           type="file"
@@ -863,8 +776,6 @@ export default function Composer({
             reader.readAsArrayBuffer(file);
           }}
         />
-        )}
-
         {images.length > 0 && (
           <div className="mt-3 grid grid-cols-1 gap-3">
             {images.map((img, idx) => (
@@ -904,7 +815,7 @@ export default function Composer({
           </div>
         )}
 
-        {isPro && video && (
+        {video && (
           <div className="space-y-2">
             <div className="text-xs text-gray-600">Selected video: {video.name}</div>
             <input
@@ -928,7 +839,8 @@ export default function Composer({
         )}
 
         <p className="text-[11px] text-gray-500">
-          Images/videos stay on this device and are never uploaded to Supabase. If you post to Bluesky, up to 4 images are sent with the text; only the text is synced to Supabase. Video is PRO only and sent directly when you post.
+          Images/videos stay on this device until you publish. When you post to BlueSky we upload the media straight to their API and only keep an
+          encrypted copy of your text for sync.
         </p>
       </div>
 
