@@ -62,6 +62,7 @@ const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
 const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const LOCAL_IMAGE_MAP_KEY = "bsky-composer-note-images";
 const LOCAL_ORDER_KEY = "bsky-composer-note-order";
+const LOCAL_HAS_CUSTOM_ORDER_KEY = "bsky-composer-has-custom-order";
 const MAX_CHARACTERS = 300;
 
 type NoteMeta = {
@@ -69,6 +70,14 @@ type NoteMeta = {
   pinned: boolean;
   tags: string[];
   versions?: { content: string; created_at: string }[];
+};
+
+const sortOldestFirst = (list: any[]) => {
+  return [...(Array.isArray(list) ? list : [])].sort((a, b) => {
+    const dateA = new Date(a?.created_at || a?.createdAt || a?.updated_at || 0).getTime() || 0;
+    const dateB = new Date(b?.created_at || b?.createdAt || b?.updated_at || 0).getTime() || 0;
+    return dateA - dateB;
+  });
 };
 
 export default function MainPage() {
@@ -94,6 +103,7 @@ export default function MainPage() {
   const [pinInfo, setPinInfo] = useState<string | null>(null);
   const [notesLoading, setNotesLoading] = useState(false);
   const lastStableNotesRef = useRef<any[]>([]);
+  const hasCustomOrderRef = useRef<boolean>(false);
   const [replyTarget, setReplyTarget] = useState<any | null>(null);
 
   const scrollToInstructions = () => {
@@ -173,17 +183,29 @@ export default function MainPage() {
   const getLocalOrder = (): string[] => {
     if (typeof window === "undefined") return [];
     try {
+      const customFlag = window.localStorage.getItem(LOCAL_HAS_CUSTOM_ORDER_KEY) === "true";
       const raw = window.localStorage.getItem(LOCAL_ORDER_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
+      hasCustomOrderRef.current = customFlag && Array.isArray(parsed) && parsed.length > 0;
       return Array.isArray(parsed) ? parsed.map(String) : [];
     } catch {
       return [];
     }
   };
 
-  const saveLocalOrder = (ids: Array<string | number>) => {
+  const saveLocalOrder = (ids: Array<string | number>, options?: { custom?: boolean }) => {
     if (typeof window === "undefined") return;
+    if (!ids.length) {
+      window.localStorage.removeItem(LOCAL_ORDER_KEY);
+      window.localStorage.removeItem(LOCAL_HAS_CUSTOM_ORDER_KEY);
+      hasCustomOrderRef.current = false;
+      return;
+    }
+    const isCustom = options?.custom ?? hasCustomOrderRef.current;
+    const flagValue = isCustom ? "true" : "false";
     window.localStorage.setItem(LOCAL_ORDER_KEY, JSON.stringify(ids.map(String)));
+    window.localStorage.setItem(LOCAL_HAS_CUSTOM_ORDER_KEY, flagValue);
+    hasCustomOrderRef.current = isCustom;
   };
 
   const getLocalImages = (): Record<string, string> => {
@@ -230,7 +252,7 @@ export default function MainPage() {
     const local = getLocalNotes();
     const safeLocal = Array.isArray(local) ? local : [];
     // Optimistically render what's already in localStorage so the list doesn't vanish
-    setNotes(safeLocal);
+    setNotes(applyOrder(safeLocal));
     // Hydrate images from IndexedDB in the background
     const withImages = await Promise.all(
       safeLocal.map(async (note) => {
@@ -246,7 +268,7 @@ export default function MainPage() {
         return note;
       })
     );
-    setNotes(withImages);
+    setNotes(applyOrder(withImages));
   };
 
   const loadLocalMetadata = () => {
@@ -315,9 +337,10 @@ export default function MainPage() {
       if (typeof window !== "undefined") {
         try {
           const deduped = dedupeByContent(next);
-          persistLocalNotes(deduped);
-          saveLocalOrder(deduped.map((n) => n.id));
-          return deduped;
+          const ordered = hasCustomOrderRef.current ? deduped : sortOldestFirst(deduped);
+          persistLocalNotes(ordered);
+          saveLocalOrder(ordered.map((n) => n.id), { custom: hasCustomOrderRef.current });
+          return ordered;
         } catch (err) {
           console.error("Failed to store note locally", err);
           setStorageMessage("Local storage is full. Delete a few notes to keep saving.");
@@ -326,8 +349,9 @@ export default function MainPage() {
         }
       } else {
         const deduped = dedupeByContent(next);
-        saveLocalOrder(deduped.map((n) => n.id));
-        return deduped;
+        const ordered = hasCustomOrderRef.current ? deduped : sortOldestFirst(deduped);
+        saveLocalOrder(ordered.map((n) => n.id), { custom: hasCustomOrderRef.current });
+        return ordered;
       }
     });
     if (images?.length) {
@@ -355,16 +379,18 @@ export default function MainPage() {
 
   const applyOrder = (arr: any[]) => {
     const order = getLocalOrder();
-    if (!order.length) return arr;
-    const rank = new Map<string, number>();
-    order.forEach((id, idx) => rank.set(String(id), idx));
     const safe = Array.isArray(arr) ? arr.filter((n) => n && typeof n.id !== "undefined") : [];
     if (!safe.length) return arr;
-    return [...safe].sort((a, b) => {
-      const ra = rank.has(String(a.id)) ? (rank.get(String(a.id)) as number) : Number.MAX_SAFE_INTEGER;
-      const rb = rank.has(String(b.id)) ? (rank.get(String(b.id)) as number) : Number.MAX_SAFE_INTEGER;
-      return ra - rb;
-    });
+    if (hasCustomOrderRef.current && order.length) {
+      const rank = new Map<string, number>();
+      order.forEach((id, idx) => rank.set(String(id), idx));
+      return [...safe].sort((a, b) => {
+        const ra = rank.has(String(a.id)) ? (rank.get(String(a.id)) as number) : Number.MAX_SAFE_INTEGER;
+        const rb = rank.has(String(b.id)) ? (rank.get(String(b.id)) as number) : Number.MAX_SAFE_INTEGER;
+        return ra - rb;
+      });
+    }
+    return sortOldestFirst(safe);
   };
 
   const fetchPlanAndNotes = async () => {
@@ -469,7 +495,7 @@ export default function MainPage() {
           await syncLocalNotesToCloud(data, session.access_token);
           if (typeof window !== "undefined") {
             window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify([]));
-            window.localStorage.setItem(LOCAL_ORDER_KEY, JSON.stringify([]));
+            saveLocalOrder([], { custom: false });
           }
         }
         await fetchMetadata();
@@ -478,7 +504,8 @@ export default function MainPage() {
           (note: any) => !deletedIds.has(String(note.id))
         );
         const hydrated = await attachImages(merged);
-        applySafeNotes(hydrated);
+        const ordered = applyOrder(hydrated);
+        applySafeNotes(ordered);
       }
     } finally {
       setNotesLoading(false);
@@ -495,10 +522,8 @@ export default function MainPage() {
   }, [notes, notesLoading]);
 
   const notesForDisplay = useMemo(() => {
-    if (notesLoading && lastStableNotesRef.current.length) {
-      return lastStableNotesRef.current;
-    }
-    return notes;
+    const base = notesLoading && lastStableNotesRef.current.length ? lastStableNotesRef.current : notes;
+    return Array.isArray(base) ? base : [];
   }, [notes, notesLoading]);
 
 
@@ -540,7 +565,7 @@ export default function MainPage() {
         const next = prev.filter((note) => note.id !== id);
         if (typeof window !== "undefined") {
           persistLocalNotes(next);
-          saveLocalOrder(next.map((n) => n.id));
+          saveLocalOrder(next.map((n) => n.id), { custom: hasCustomOrderRef.current });
         }
         return next;
       });
@@ -584,7 +609,7 @@ export default function MainPage() {
         // also clear from local cache so mergeLocalAndCloud doesn't resurrect it
         if (typeof window !== "undefined") {
           persistLocalNotes(next);
-          saveLocalOrder(next.map((n: any) => n.id));
+          saveLocalOrder(next.map((n: any) => n.id), { custom: hasCustomOrderRef.current });
         }
         return next;
       });
@@ -710,7 +735,8 @@ export default function MainPage() {
       if ((!user || !isPro) && typeof window !== "undefined") {
         persistLocalNotes(next);
       }
-      saveLocalOrder(next.map((n) => n.id));
+      hasCustomOrderRef.current = true;
+      saveLocalOrder(next.map((n) => n.id), { custom: true });
       return next;
     });
   };
@@ -728,7 +754,8 @@ export default function MainPage() {
       if ((!user || !isPro) && typeof window !== "undefined") {
         persistLocalNotes(next);
       }
-      saveLocalOrder(next.map((n) => n.id));
+      hasCustomOrderRef.current = true;
+      saveLocalOrder(next.map((n) => n.id), { custom: true });
       return next;
     });
   };
@@ -740,6 +767,23 @@ export default function MainPage() {
       else next.add(id);
       return next;
     });
+  };
+
+  const selectAllThreadNotes = () => {
+    setThreadSelection(new Set(sortedNotes.map((note) => note.id)));
+  };
+
+  const clearThreadSelection = () => {
+    setThreadSelection(new Set());
+  };
+
+  const deleteSelectedThreadNotes = async () => {
+    if (!threadSelection.size) return;
+    const ids = Array.from(threadSelection);
+    for (const id of ids) {
+      await deleteNote(id);
+    }
+    setThreadSelection(new Set());
   };
 
   const togglePin = (id: string | number) => {
@@ -754,7 +798,7 @@ export default function MainPage() {
       // Reorder notes with updated pin state so drag/drop uses the same view as render.
       setNotes((prevNotes) => {
         const sorted = sortWithPins(prevNotes, next);
-        saveLocalOrder(sorted.map((n) => n.id));
+        saveLocalOrder(sorted.map((n) => n.id), { custom: hasCustomOrderRef.current });
         return sorted;
       });
       setPinInfo(updated.pinned ? "Pinned note stays at the top. Unpin to reorder it." : null);
@@ -870,7 +914,7 @@ export default function MainPage() {
   const sortedNotes = useMemo(() => {
     const sorted = sortWithPins(notesForDisplay, metadata);
     // keep order persisted for consistency across refreshes
-    saveLocalOrder(sorted.map((n) => n.id));
+    saveLocalOrder(sorted.map((n) => n.id), { custom: hasCustomOrderRef.current });
     return sorted;
   }, [notesForDisplay, metadata]);
 
@@ -1272,6 +1316,9 @@ export default function MainPage() {
           threadSelectEnabled
           selectedForThread={threadSelection}
           onToggleThreadSelect={toggleThreadSelect}
+          onSelectAllThreads={selectAllThreadNotes}
+          onClearThreadSelection={clearThreadSelection}
+          onDeleteSelectedThreads={deleteSelectedThreadNotes}
         />
 
         <>

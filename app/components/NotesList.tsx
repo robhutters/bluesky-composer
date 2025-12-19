@@ -18,6 +18,9 @@ type NotesListProps = {
   selectedForThread?: Set<string | number>;
   onToggleThreadSelect?: (id: string | number) => void;
   threadSelectEnabled?: boolean;
+  onSelectAllThreads?: () => void;
+  onClearThreadSelection?: () => void;
+  onDeleteSelectedThreads?: () => void;
 };
 
 export default function NotesList({
@@ -36,6 +39,9 @@ export default function NotesList({
   selectedForThread,
   onToggleThreadSelect,
   threadSelectEnabled = true,
+  onSelectAllThreads,
+  onClearThreadSelection,
+  onDeleteSelectedThreads,
 }: NotesListProps) {
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
   const [tagInputs, setTagInputs] = useState<Record<string | number, string>>({});
@@ -63,6 +69,34 @@ export default function NotesList({
       {(!notes || notes.length === 0) && (
         <div className="mb-4 rounded border-2 border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-600">
           No notes to display yet.
+        </div>
+      )}
+      {allowThreadSelect && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+          <button
+            type="button"
+            onClick={() => threadSelectEnabled && onSelectAllThreads?.()}
+            className="px-2 py-1 rounded border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700"
+            disabled={!threadSelectEnabled}
+          >
+            Select all notes
+          </button>
+          <button
+            type="button"
+            onClick={() => threadSelectEnabled && onClearThreadSelection?.()}
+            className="px-2 py-1 rounded border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700"
+            disabled={!threadSelectEnabled}
+          >
+            Clear selection
+          </button>
+          <button
+            type="button"
+            onClick={() => onDeleteSelectedThreads?.()}
+            className="px-2 py-1 rounded border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold"
+            disabled={!selectedForThread || selectedForThread.size === 0}
+          >
+            Delete selected notes
+          </button>
         </div>
       )}
       <ul className="space-y-3">
@@ -101,14 +135,14 @@ export default function NotesList({
                     <label className="flex items-center gap-1 text-[11px] text-gray-600">
                       <input
                         type="checkbox"
-                        checked={selectedForThread?.has(note.id) || false}
-                        onChange={() => threadSelectEnabled && onToggleThreadSelect && onToggleThreadSelect(note.id)}
-                        className="h-3 w-3"
-                        disabled={!threadSelectEnabled}
-                      />
-                      <span className={!threadSelectEnabled ? "opacity-50" : ""}>Thread</span>
-                    </label>
-                  )}
+                    checked={selectedForThread?.has(note.id) || false}
+                    onChange={() => threadSelectEnabled && onToggleThreadSelect && onToggleThreadSelect(note.id)}
+                    className="h-3 w-3"
+                    disabled={!threadSelectEnabled}
+                  />
+                      <span className={!threadSelectEnabled ? "opacity-50" : ""}>select</span>
+                  </label>
+                )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button

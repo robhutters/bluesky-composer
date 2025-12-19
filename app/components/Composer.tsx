@@ -50,6 +50,9 @@ export default function Composer({
   const [postMessage, setPostMessage] = useState<string | null>(null);
   const hasBskyCreds = Boolean(bskyHandle && bskyAppPassword);
   const [showEmojis, setShowEmojis] = useState(false);
+  const [celebrationsEnabled, setCelebrationsEnabled] = useState(true);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const celebrationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [replyControl, setReplyControl] = useState<
     "anyone" | "no_replies" | "mentions" | "followers" | "following" | "list"
   >("anyone");
@@ -98,9 +101,32 @@ export default function Composer({
         setBskyLinked(true);
         setShowBskyForm(false);
       }
+      const arcadePreference = window.localStorage.getItem("bsky-arcade-mode");
+      if (arcadePreference === "off") {
+        setCelebrationsEnabled(false);
+      }
     } catch {
       /* ignore */
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("bsky-arcade-mode", celebrationsEnabled ? "on" : "off");
+    }
+    if (!celebrationsEnabled && celebrationTimeoutRef.current) {
+      clearTimeout(celebrationTimeoutRef.current);
+      celebrationTimeoutRef.current = null;
+      setShowCelebration(false);
+    }
+  }, [celebrationsEnabled]);
+
+  useEffect(() => {
+    return () => {
+      if (celebrationTimeoutRef.current) {
+        clearTimeout(celebrationTimeoutRef.current);
+      }
+    };
   }, []);
 
   const saveBskyCreds = () => {
@@ -465,6 +491,15 @@ export default function Composer({
         if (!res.ok) throw new Error(body?.error || "Failed to post");
       }
       setPostMessage("Posted to Bluesky ✔️");
+      if (celebrationsEnabled) {
+        setShowCelebration(true);
+        if (celebrationTimeoutRef.current) {
+          clearTimeout(celebrationTimeoutRef.current);
+        }
+        celebrationTimeoutRef.current = setTimeout(() => {
+          setShowCelebration(false);
+        }, 2200);
+      }
       setTimeout(() => setPostMessage(null), 4000);
     } catch (err: any) {
       setPostMessage(err?.message || "Failed to post");
@@ -567,15 +602,49 @@ export default function Composer({
             >
               Manage
             </button>
-            <button
-              type="button"
-              onClick={() => setShowEmojis((v) => !v)}
-              className="px-2 py-1 text-xs font-semibold rounded border border-gray-200 bg-white hover:bg-gray-100"
-            >
-              😊 Emoji
-            </button>
           </div>
         )}
+        <button
+          type="button"
+          onClick={() => setShowEmojis((v) => !v)}
+          className="px-2 py-1 text-xs font-semibold rounded border border-gray-200 bg-white hover:bg-gray-100"
+        >
+          😊 Emoji
+        </button>
+        <div className="ml-auto flex items-center gap-3 text-xs text-gray-600">
+          <div className="flex items-center gap-2">
+            <span>Arcade celebration</span>
+            <button
+              type="button"
+              onClick={() => setCelebrationsEnabled((prev) => !prev)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full border ${
+                celebrationsEnabled ? "bg-sky-500 border-sky-500" : "bg-gray-300 border-gray-300"
+              }`}
+              aria-pressed={celebrationsEnabled}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                  celebrationsEnabled ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!celebrationsEnabled) return;
+              setShowCelebration(true);
+              if (celebrationTimeoutRef.current) clearTimeout(celebrationTimeoutRef.current);
+              celebrationTimeoutRef.current = setTimeout(() => setShowCelebration(false), 1800);
+            }}
+            className={`px-2 py-1 rounded border text-gray-600 ${
+              celebrationsEnabled ? "border-sky-300 bg-white hover:bg-sky-50" : "border-gray-200 bg-gray-100 cursor-not-allowed"
+            }`}
+            disabled={!celebrationsEnabled}
+          >
+            Preview
+          </button>
+        </div>
       </div>
 
       {(!bskyLinked || showBskyForm) && (
@@ -920,7 +989,20 @@ export default function Composer({
       {postMessage && (
         <div className="mt-2 text-sm text-blue-700">{postMessage}</div>
       )}
-
+      {showCelebration && celebrationsEnabled && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-slate-900/70" />
+          <div className="relative flex flex-col items-center gap-3 text-white drop-shadow-lg">
+            <div className="flex gap-6 text-4xl sm:text-5xl">
+              <span className="animate-bounce">👾</span>
+              <span className="animate-pulse">🚀</span>
+              <span className="animate-bounce delay-150">👾</span>
+            </div>
+            <p className="text-lg sm:text-xl font-semibold tracking-wide">Arcade combo sent!</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-slate-200">BlueSky post deployed</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
