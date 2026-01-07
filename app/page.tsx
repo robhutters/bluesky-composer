@@ -1070,7 +1070,7 @@ export default function MainPage() {
             </div>
           )}
 
-          <div className="grid gap-0 xl:grid-cols-[1fr_1.25fr_1fr] bg-white/70 border border-slate-200 rounded-xl overflow-hidden divide-y xl:divide-y-0 xl:divide-x divide-slate-200">
+          <div className="grid gap-0 xl:grid-cols-[0.8fr_1.1fr_1.1fr] bg-white/70 border border-slate-200 rounded-xl overflow-hidden divide-y xl:divide-y-0 xl:divide-x divide-slate-200">
             <div className="p-4 sm:p-6 space-y-3" id="composer-root">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-800">Reply context</h3>
@@ -1277,6 +1277,40 @@ export default function MainPage() {
                 <h3 className="text-sm font-semibold text-slate-800">Reading sessions</h3>
               </div>
               <ReadingSessionCard />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 bg-white/80 border border-slate-200 rounded-xl overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-200 p-6">
+            <div className="space-y-3">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">About</p>
+              <h3 className="text-xl font-semibold text-slate-900">BlueSky Composer for professional yappers</h3>
+              <p className="text-sm text-slate-700">
+                Built for people who talk for a living: community leads, devrels, creators, founders. Keep your takes, threads,
+                and book notes in one place, then post them to BlueSky without leaving the page.
+              </p>
+              <ul className="list-disc list-inside text-sm text-slate-700 space-y-1">
+                <li>Post with confidence using drafts, media, and thread tools.</li>
+                <li>Keep your research tidy with notes and reading sessions.</li>
+                <li>Stay in flow with a three-column view: context, composer, and timeline.</li>
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">App password</p>
+              <h3 className="text-xl font-semibold text-slate-900">You need a BlueSky app password</h3>
+              <p className="text-sm text-slate-700">
+                Bluesky requires an app-specific password to post via third-party tools. Generate one in Bluesky settings
+                (Privacy & Security → App Passwords), then paste your handle and app password into the composer.
+              </p>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                <p className="font-semibold text-slate-900">Why?</p>
+                <p className="text-slate-700">
+                  App passwords keep your main login safe. We store them locally in your browser; nothing leaves your device unless
+                  you choose to post.
+                </p>
+              </div>
+              <p className="text-sm text-slate-700">
+                Ready? Add your handle and app password in the composer, start writing, and ship faster.
+              </p>
             </div>
           </div>
         </div>

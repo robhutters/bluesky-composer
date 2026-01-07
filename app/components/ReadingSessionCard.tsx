@@ -1,52 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 type SessionRecord = {
   id: number;
-  title: string;
   durationMs: number;
-  mood: string;
-  moodColor: string;
   thoughts: string;
-  coverData: string | null;
+  bookTitle: string;
 };
-
-const EMOTIONS = [
-  "Joy",
-  "Trust",
-  "Fear",
-  "Surprise",
-  "Sadness",
-  "Anger",
-  "Happy",
-  "Content",
-  "Optimistic",
-  "Excited",
-  "Enthusiastic",
-  "Affectionate",
-  "Passionate",
-  "Sentimental",
-  "Frustrated",
-  "Jealous",
-  "Resentful",
-  "Disappointed",
-  "Regretful",
-  "Guilty",
-  "Lonely",
-  "Confused",
-  "Amazed",
-  "Inspired",
-  "Anxious",
-  "Worried",
-  "Helpless",
-  "Scared",
-  "Mad",
-];
 
 const THOUGHT_LIMIT = 240;
 const STORAGE_KEY = "reading-sessions";
-const COVER_KEY = "reading-cover";
+const BG_KEY = "reading-sessions-bg";
+const SHOW_TIME_KEY = "reading-sessions-show-time";
 
 function formatMs(ms: number) {
   const totalSeconds = Math.floor(ms / 1000);
@@ -59,15 +25,14 @@ export default function ReadingSessionCard() {
   const [sessionActive, setSessionActive] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [title, setTitle] = useState("");
-  const [mood, setMood] = useState("Joy");
-  const [moodColor, setMoodColor] = useState("#f5c542");
   const [thoughts, setThoughts] = useState("");
+  const [bookTitle, setBookTitle] = useState("");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [coverData, setCoverData] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [postMessage, setPostMessage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [backgroundSrc, setBackgroundSrc] = useState<string | null>(null);
+  const [showSessionTime, setShowSessionTime] = useState(true);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -79,8 +44,14 @@ export default function ReadingSessionCard() {
         setSessions([]);
       }
     }
-    const cover = window.localStorage.getItem(COVER_KEY);
-    if (cover) setCoverData(cover);
+    const storedBg = window.localStorage.getItem(BG_KEY);
+    if (storedBg) {
+      setBackgroundSrc(storedBg);
+    }
+    const storedShow = window.localStorage.getItem(SHOW_TIME_KEY);
+    if (storedShow) {
+      setShowSessionTime(storedShow === "true");
+    }
   }, []);
 
   useEffect(() => {
@@ -90,8 +61,17 @@ export default function ReadingSessionCard() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (coverData) window.localStorage.setItem(COVER_KEY, coverData);
-  }, [coverData]);
+    if (backgroundSrc) {
+      window.localStorage.setItem(BG_KEY, backgroundSrc);
+    } else {
+      window.localStorage.removeItem(BG_KEY);
+    }
+  }, [backgroundSrc]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SHOW_TIME_KEY, String(showSessionTime));
+  }, [showSessionTime]);
 
   useEffect(() => {
     if (!sessionActive || !startTime) return;
@@ -106,7 +86,6 @@ export default function ReadingSessionCard() {
     setStartTime(Date.now());
     setElapsed(0);
     setThoughts("");
-    setTitle("");
   };
 
   const endSession = () => {
@@ -114,12 +93,9 @@ export default function ReadingSessionCard() {
     const durationMs = Date.now() - startTime;
     const record: SessionRecord = {
       id: Date.now(),
-      title: title || "Untitled session",
       durationMs,
-      mood,
-      moodColor,
       thoughts,
-      coverData,
+      bookTitle,
     };
     setSessions((prev) => [record, ...prev]);
     setSessionActive(false);
@@ -127,196 +103,95 @@ export default function ReadingSessionCard() {
     setElapsed(0);
   };
 
-  const handleCoverUpload = (file?: File) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setCoverData(reader.result);
-    };
-    reader.readAsDataURL(file);
-  };
+  const loadImage = (src: string) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
 
   const drawCard = async (session: SessionRecord) => {
     const width = 900;
-    const height = 420;
+    const height = 1600;
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    ctx.fillStyle = "#0b1020";
+    // Paint the provided (or default) background image; fall back to a soft gradient.
+    ctx.fillStyle = "#0f172a";
     ctx.fillRect(0, 0, width, height);
-
-    const cardX = 36;
-    const cardY = 36;
-    const cardW = width - 72;
-    const cardH = height - 72;
-    const radius = 26;
-    ctx.fillStyle = session.moodColor || "#1f2937";
-    ctx.beginPath();
-    ctx.moveTo(cardX + radius, cardY);
-    ctx.lineTo(cardX + cardW - radius, cardY);
-    ctx.quadraticCurveTo(cardX + cardW, cardY, cardX + cardW, cardY + radius);
-    ctx.lineTo(cardX + cardW, cardY + cardH - radius);
-    ctx.quadraticCurveTo(cardX + cardW, cardY + cardH, cardX + cardW - radius, cardY + cardH);
-    ctx.lineTo(cardX + radius, cardY + cardH);
-    ctx.quadraticCurveTo(cardX, cardY + cardH, cardX, cardY + cardH - radius);
-    ctx.lineTo(cardX, cardY + radius);
-    ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
-    ctx.closePath();
-    ctx.fill();
-
-    // title strip
-    const stripH = 70;
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.beginPath();
-    ctx.moveTo(cardX + radius, cardY);
-    ctx.lineTo(cardX + cardW - radius, cardY);
-    ctx.quadraticCurveTo(cardX + cardW, cardY, cardX + cardW, cardY + radius);
-    ctx.lineTo(cardX + cardW, cardY + stripH);
-    ctx.lineTo(cardX, cardY + stripH);
-    ctx.lineTo(cardX, cardY + radius);
-    ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#0b1020";
-    ctx.font = "bold 28px 'Georgia'";
-    ctx.textAlign = "center";
-    ctx.fillText(session.title, cardX + cardW / 2, cardY + stripH / 2 + 10);
-
-    // center content
-    const coverW = 170;
-    const coverH = 230;
-    const coverX = cardX + 32;
-    const contentH = cardH - stripH;
-    const startY = cardY + stripH + (contentH - coverH) / 2;
-    const coverY = startY;
-    ctx.fillStyle = "rgba(0,0,0,0.2)";
-    ctx.fillRect(coverX, coverY, coverW, coverH);
-    if (session.coverData) {
-      const img = new Image();
-      await new Promise((res) => {
-        img.onload = res;
-        img.onerror = res;
-        img.src = session.coverData!;
-      });
-      ctx.drawImage(img, coverX, coverY, coverW, coverH);
-    } else {
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
-      ctx.fillRect(coverX, coverY, coverW, coverH);
-      ctx.fillStyle = "rgba(255,255,255,0.75)";
-      ctx.font = "12px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("Cover", coverX + coverW / 2, coverY + coverH / 2);
+    try {
+      const img = await loadImage(backgroundSrc || "/assets/mood-background.png");
+      const scale = Math.max(width / img.width, height / img.height);
+      const drawW = img.width * scale;
+      const drawH = img.height * scale;
+      const dx = (width - drawW) / 2;
+      const dy = (height - drawH) / 2;
+      ctx.drawImage(img, dx, dy, drawW, drawH);
+    } catch {
+      const grad = ctx.createLinearGradient(0, 0, 0, height);
+      grad.addColorStop(0, "#111827");
+      grad.addColorStop(1, "#1f2937");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, width, height);
     }
 
-    const infoX = coverX + coverW + 24;
-    const infoW = cardX + cardW - infoX - 24;
-    const infoH = 150;
-    const infoY = coverY + (coverH - infoH) / 2;
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.beginPath();
-    ctx.moveTo(infoX + 14, infoY);
-    ctx.lineTo(infoX + infoW - 14, infoY);
-    ctx.quadraticCurveTo(infoX + infoW, infoY, infoX + infoW, infoY + 14);
-    ctx.lineTo(infoX + infoW, infoY + infoH - 14);
-    ctx.quadraticCurveTo(infoX + infoW, infoY + infoH, infoX + infoW - 14, infoY + infoH);
-    ctx.lineTo(infoX + 14, infoY + infoH);
-    ctx.quadraticCurveTo(infoX, infoY + infoH, infoX, infoY + infoH - 14);
-    ctx.lineTo(infoX, infoY + 14);
-    ctx.quadraticCurveTo(infoX, infoY, infoX + 14, infoY);
-    ctx.closePath();
-    ctx.fill();
+    // Overlay to keep text legible
+    const overlay = ctx.createLinearGradient(0, 0, 0, height);
+    overlay.addColorStop(0, "rgba(0,0,0,0.15)");
+    overlay.addColorStop(0.5, "rgba(0,0,0,0.35)");
+    overlay.addColorStop(1, "rgba(0,0,0,0.6)");
+    ctx.fillStyle = overlay;
+    ctx.fillRect(0, 0, width, height);
 
-    ctx.fillStyle = "#0b1020";
-    ctx.font = "15px 'Georgia'";
-    ctx.textAlign = "left";
-    const chip = (label: string, value: string, cx: number, cy: number) => {
-      const text = `${label}: ${value}`;
-      const paddingX = 10;
-      const metrics = ctx.measureText(text);
-      const w = metrics.width + paddingX * 2;
-      const h = 24;
-      const r = 12;
-      ctx.fillStyle = "rgba(0,0,0,0.08)";
-      ctx.beginPath();
-      ctx.moveTo(cx + r, cy);
-      ctx.lineTo(cx + w - r, cy);
-      ctx.quadraticCurveTo(cx + w, cy, cx + w, cy + r);
-      ctx.lineTo(cx + w, cy + h - r);
-      ctx.quadraticCurveTo(cx + w, cy + h, cx + w - r, cy + h);
-      ctx.lineTo(cx + r, cy + h);
-      ctx.quadraticCurveTo(cx, cy + h, cx, cy + h - r);
-      ctx.lineTo(cx, cy + r);
-      ctx.quadraticCurveTo(cx, cy, cx + r, cy);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#0b1020";
-      ctx.fillText(text, cx + paddingX, cy + h / 2 + 5);
-      return w;
-    };
-    const timeX = infoX + 14;
-    const timeW = chip("Time", formatMs(session.durationMs), timeX, infoY + 18);
-    const moodX = timeX + timeW + 6;
-    chip("Mood", session.mood, moodX, infoY + 18);
+    // Typography
+    const quoteText = session.thoughts || "Your quote goes here";
+    const subtitle = session.bookTitle ? `— ${session.bookTitle}` : "";
+    const maxWidth = width - 220;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "white";
 
-    // thoughts
-    const thoughtBoxX = infoX + 12;
-    const thoughtBoxY = infoY + 52;
-    const thoughtBoxW = infoW - 24;
-    const thoughtBoxH = 60;
-    ctx.fillStyle = "rgba(0,0,0,0.06)";
-    ctx.beginPath();
-    ctx.moveTo(thoughtBoxX + 10, thoughtBoxY);
-    ctx.lineTo(thoughtBoxX + thoughtBoxW - 10, thoughtBoxY);
-    ctx.quadraticCurveTo(thoughtBoxX + thoughtBoxW, thoughtBoxY, thoughtBoxX + thoughtBoxW, thoughtBoxY + 10);
-    ctx.lineTo(thoughtBoxX + thoughtBoxW, thoughtBoxY + thoughtBoxH - 10);
-    ctx.quadraticCurveTo(
-      thoughtBoxX + thoughtBoxW,
-      thoughtBoxY + thoughtBoxH,
-      thoughtBoxX + thoughtBoxW - 10,
-      thoughtBoxY + thoughtBoxH,
-    );
-    ctx.lineTo(thoughtBoxX + 10, thoughtBoxY + thoughtBoxH);
-    ctx.quadraticCurveTo(thoughtBoxX, thoughtBoxY + thoughtBoxH, thoughtBoxX, thoughtBoxY + thoughtBoxH - 10);
-    ctx.lineTo(thoughtBoxX, thoughtBoxY + 10);
-    ctx.quadraticCurveTo(thoughtBoxX, thoughtBoxY, thoughtBoxX + 10, thoughtBoxY);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(thoughtBoxX, thoughtBoxY, thoughtBoxW, thoughtBoxH);
-    ctx.clip();
-    ctx.strokeStyle = "#0b1020";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(thoughtBoxX + 8, thoughtBoxY + 8);
-    ctx.lineTo(thoughtBoxX + 8, thoughtBoxY + thoughtBoxH - 8);
-    ctx.stroke();
-    ctx.fillStyle = "#0b1020";
-    ctx.font = "italic 14px 'Georgia'";
-    const firstLineY = thoughtBoxY + thoughtBoxH / 2 - 2;
-    const wrapText = (text: string, maxWidth: number, lineHeight: number, startY: number) => {
-      const words = text.split(" ");
-      let line = "";
-      let y = startY;
-      for (let n = 0; n < words.length; n++) {
-        const testLine = line + words[n] + " ";
-        const metrics = ctx.measureText(testLine);
-        if (metrics.width > maxWidth && n > 0) {
-          ctx.fillText(line, thoughtBoxX + 18, y);
-          line = words[n] + " ";
-          y += lineHeight;
-        } else {
-          line = testLine;
-        }
+    // playful serif script feel
+    ctx.font = "400 64px 'Viaoda Libre', 'Playfair Display', 'Georgia', serif";
+    const lines: string[] = [];
+    const words = quoteText.split(" ");
+    let line = "";
+    for (const w of words) {
+      const test = line + w + " ";
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line.trim());
+        line = w + " ";
+      } else {
+        line = test;
       }
-      if (line.trim()) ctx.fillText(line, thoughtBoxX + 18, y);
-    };
-    wrapText(session.thoughts || "No thoughts added.", thoughtBoxW - 32, 18, firstLineY);
-    ctx.restore();
+    }
+    if (line.trim()) lines.push(line.trim());
+
+    const lineHeight = 80;
+    const blockHeight = lines.length * lineHeight;
+    let startY = height / 2 - blockHeight / 2;
+
+    lines.forEach((ln, idx) => {
+      ctx.fillText(ln, width / 2, startY + idx * lineHeight);
+    });
+
+    if (subtitle) {
+      ctx.font = "italic 32px 'Viaoda Libre', 'Playfair Display', 'Georgia', serif";
+      const subY = startY + lines.length * lineHeight + 36;
+      ctx.fillText(subtitle, width / 2, subY);
+    }
+
+    if (showSessionTime) {
+      const timeText = `Session: ${formatMs(session.durationMs)}`;
+      ctx.font = "600 26px 'Inter', 'Helvetica Neue', Arial, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.fillText(timeText, width - 40, height - 40);
+    }
 
     return canvas.toDataURL("image/png");
   };
@@ -343,13 +218,13 @@ export default function ReadingSessionCard() {
         body: JSON.stringify({
           identifier: handle,
           appPassword,
-          text: `${latest.title} • ${formatMs(latest.durationMs)} • Mood: ${latest.mood}`,
+          text: latest.thoughts || "Shared a reading quote.",
           images: [
             {
               data: dataUrl,
-              alt: latest.title,
+              alt: latest.thoughts || "Reading quote",
               width: 900,
-              height: 420,
+              height: 1600,
             },
           ],
           replyControl: "anyone",
@@ -380,19 +255,33 @@ export default function ReadingSessionCard() {
     setExporting(false);
   };
 
+  const generatePreview = async () => {
+    if (!latest) return;
+    const url = await drawCard(latest);
+    setPreviewUrl(url);
+  };
+
+  const handleBackgroundUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result;
+      if (typeof result === "string") {
+        setBackgroundSrc(result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
-    <div className="rounded-3xl border border-slate-800/60 bg-slate-900/70 p-6 shadow-inner shadow-black/40">
+    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Reading sessions</p>
-          <p className="text-xl font-semibold text-slate-50">Log & share</p>
-        </div>
+        <p className="text-sm text-slate-700">Capture a quote, add a book title, preview, then export.</p>
         <button
           onClick={sessionActive ? endSession : startSession}
           className={`rounded-full px-3 py-2 text-xs font-semibold ${
             sessionActive
-              ? "border border-amber-200/60 bg-amber-100/10 text-amber-50"
-              : "border border-white/30 bg-white/10 text-white"
+              ? "border border-amber-300 bg-amber-50 text-amber-800"
+              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
           }`}
         >
           {sessionActive ? "End session" : "Start session"}
@@ -401,159 +290,117 @@ export default function ReadingSessionCard() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-3">
-          <label className="block text-sm text-slate-300">
-            Session title
-            <input
-              className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm"
-              placeholder="Chapter or section title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              disabled={!sessionActive}
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm text-slate-300">
-              Mood
-              <select
-                className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm"
-                value={mood}
-                onChange={(e) => setMood(e.target.value)}
-                disabled={!sessionActive}
-              >
-                {EMOTIONS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm text-slate-300">
-              Mood color
-              <div className="mt-2 flex items-center gap-3">
-                <input
-                  type="color"
-                  className="h-10 w-16 cursor-pointer rounded-lg border border-white/10 bg-transparent p-1"
-                  value={moodColor}
-                  onChange={(e) => setMoodColor(e.target.value)}
-                  disabled={!sessionActive}
-                />
-                <span className="text-[11px] text-slate-400">{moodColor}</span>
-              </div>
-            </label>
-          </div>
-          <label className="block text-sm text-slate-300">
-            Thoughts (optional)
+          {!sessionActive && (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Start a session to edit the fields below.
+            </div>
+          )}
+          <label className="block text-sm text-slate-800">
+            Quote to share
             <textarea
-              className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm"
-              rows={3}
+              className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm text-slate-900 ${
+                sessionActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+              }`}
+              rows={4}
               maxLength={THOUGHT_LIMIT}
               value={thoughts}
               onChange={(e) => setThoughts(e.target.value)}
               disabled={!sessionActive}
-              placeholder="Notes or a short quote from this session..."
+              placeholder="Write the line you want to share..."
             />
-            <div className="mt-1 text-right text-[11px] text-slate-400">
+            <div className="mt-1 text-right text-[11px] text-slate-600">
               {thoughts.length}/{THOUGHT_LIMIT}
             </div>
           </label>
-          <div className="flex items-center justify-between text-sm text-slate-300">
+          <label className="block text-sm text-slate-800">
+            Book title (optional)
+            <input
+              className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm text-slate-900 ${
+                sessionActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+              }`}
+              placeholder="e.g. The Midnight Library"
+              value={bookTitle}
+              onChange={(e) => setBookTitle(e.target.value)}
+              disabled={!sessionActive}
+            />
+          </label>
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <p className="text-xs font-semibold text-slate-800">Background image</p>
+            <p className="text-[11px] text-slate-600">
+              Use your own image for the card. Defaults to the built-in blur if none is set.
+            </p>
+            <div className="flex items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleBackgroundUpload(file);
+                  }}
+                />
+                Upload image
+              </label>
+              <button
+                type="button"
+                className="text-xs font-semibold text-slate-600 hover:text-slate-800"
+                onClick={() => setBackgroundSrc(null)}
+              >
+                Use default
+              </button>
+            </div>
+            {backgroundSrc ? (
+              <p className="text-[11px] text-slate-600">Custom image selected</p>
+            ) : (
+              <p className="text-[11px] text-slate-600">Using default background</p>
+            )}
+          </div>
+          <div className="flex items-center justify-between text-sm text-slate-700">
             <span>Timer: {sessionActive ? formatMs(elapsed) : "00:00"}</span>
+            <label className="flex items-center gap-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-slate-800"
+                checked={showSessionTime}
+                onChange={(e) => setShowSessionTime(e.target.checked)}
+              />
+              Include session time on export
+            </label>
           </div>
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-300">Book cover</p>
-              <p className="text-xs text-slate-400">Stored locally</p>
-            </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-full border border-white/20 px-3 py-2 text-xs font-semibold text-slate-50 transition hover:border-white/50 hover:bg-white/10"
-            >
-              Upload
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => handleCoverUpload(e.target.files?.[0])}
-            />
-          </div>
-          <div className="flex items-center justify-center rounded-2xl border border-dashed border-white/20 bg-slate-900/60 p-4">
-            {coverData ? (
-              <img
-                src={coverData}
-                alt="Book cover"
-                className="max-h-[220px] w-auto rounded-xl border border-white/10 object-contain"
-              />
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            {previewUrl ? (
+              <img src={previewUrl} alt="Preview" className="w-full rounded-xl border border-slate-100 object-cover" />
             ) : (
-              <p className="text-sm text-slate-400">No cover saved yet</p>
-            )}
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            {latest ? (
-              <div
-                className="flex flex-col gap-3 rounded-xl border border-white/10 p-4"
-                style={{ backgroundColor: latest.moodColor }}
-              >
-                <div className="rounded-lg bg-white/85 px-3 py-2 text-center text-black">
-                  <p className="text-lg font-semibold">{latest.title}</p>
-                </div>
-                <div className="flex items-start gap-3 rounded-lg bg-white/90 px-3 py-2 text-black">
-                  <div className="h-24 w-16 overflow-hidden rounded-md border border-black/10 bg-black/10">
-                    {latest.coverData ? (
-                      <img
-                        src={latest.coverData}
-                        alt="Book cover"
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[10px] text-black/60">
-                        Cover
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="flex flex-wrap gap-2 text-xs text-black/80">
-                      <span className="rounded-full bg-black/10 px-2 py-1">
-                        Time: {formatMs(latest.durationMs)}
-                      </span>
-                      <span className="rounded-full bg-black/10 px-2 py-1">
-                        Mood: {latest.mood}
-                      </span>
-                    </div>
-                    <div
-                      className="flex items-start gap-2 rounded-lg bg-black/5 px-2 py-2 text-xs italic text-black"
-                      style={{ borderLeft: "3px solid #0b1020" }}
-                    >
-                      <span className="sr-only">Quote</span>
-                      <p className="line-clamp-2">{latest.thoughts || "No thoughts added."}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400">Finish a session to see it here.</p>
+              <p className="text-sm text-slate-500">Generate a preview to see it here.</p>
             )}
           </div>
           <div className="flex flex-col gap-2">
             <button
-              className="w-full rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-slate-50 transition hover:border-white/50 hover:bg-white/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500"
+              className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+              onClick={generatePreview}
+              disabled={!latest}
+            >
+              Preview image
+            </button>
+            <button
+              className="w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
               onClick={exportImage}
               disabled={!latest || exporting}
             >
               {exporting ? "Exporting…" : "Export image"}
             </button>
             <button
-              className="w-full rounded-full border border-sky-400/40 bg-sky-500/20 px-4 py-2 text-sm font-semibold text-sky-50 transition hover:border-sky-400 hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500"
+              className="w-full rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
               onClick={postToBluesky}
               disabled={!latest || exporting}
             >
               Post to Bluesky
             </button>
-            {postMessage && <p className="text-xs text-slate-300">{postMessage}</p>}
+            {postMessage && <p className="text-xs text-slate-600">{postMessage}</p>}
           </div>
         </div>
       </div>
