@@ -6,56 +6,11 @@ import Composer from "./components/Composer";
 import NotesList from "./components/NotesList";
 import { FloatingProfile } from "./components/FloatingProfile";
 import LogoutButton from "./components/LogoutButton";
-import Image from "next/image";
 import { useAuth } from "./providers/AuthProvider";
 import { loadImagesForKey, saveImagesForKey, deleteImagesForKey } from "./lib/indexedImages";
 import DiscoverFeed from "./components/DiscoverFeed";
-
-const HERO_FEATURES = [
-  {
-    title: "Composer built for 300 characters",
-    description:
-      "See the exact BlueSky limit, auto-save at 300 chars, drop emoji, and clip long thoughts into threads instantly.",
-  },
-  {
-    title: "Desktop feed browser",
-    description:
-      "Scroll Discover, Following, Mutuals, and your own timeline side-by-side. Tap any card to preload replies in the Composer.",
-  },
-  {
-    title: "Media + threads without fuss",
-    description:
-      "Post up to four images or inline video, export Markdown, and keep encrypted backups without ever leaving your browser.",
-  },
-  {
-    title: "Gamer-first workflow",
-    description:
-      "Keyboard shortcuts, drag-and-drop organization, Today picker, and quick copy buttons help you ship a take and get back to your games.",
-  },
-];
-
-const APP_PASSWORD_STEPS = [
-  {
-    title: "Step 1 · Open BlueSky settings",
-    description: "On the BlueSky app or web client, open the sidebar and tap Settings.",
-    image: "/assets/instructions/step_1.jpg",
-  },
-  {
-    title: "Step 2 · Privacy & Security",
-    description: "Head to Privacy & Security → App Passwords. This is where BlueSky issues secondary passwords.",
-    image: "/assets/instructions/step_2.jpg",
-  },
-  {
-    title: "Step 3 · Create an app password",
-    description: "Create a new password (name it anything). BlueSky shows it once—copy it somewhere safe.",
-    image: "/assets/instructions/step_3.jpg",
-  },
-  {
-    title: "Step 4 · Paste it into BlueSky Composer",
-    description: "Inside the Composer, paste your handle + app password. That’s all you need to post directly.",
-    image: null,
-  },
-];
+import ReadingSessionCard from "./components/ReadingSessionCard";
+import Image from "next/image";
 
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
@@ -105,18 +60,6 @@ export default function MainPage() {
   const lastStableNotesRef = useRef<any[]>([]);
   const hasCustomOrderRef = useRef<boolean>(false);
   const [replyTarget, setReplyTarget] = useState<any | null>(null);
-
-  const scrollToInstructions = () => {
-    if (typeof document === "undefined") return;
-    const el = document.getElementById("app-password-steps");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  const scrollToComposer = () => {
-    if (typeof document === "undefined") return;
-    const el = document.getElementById("composer-root");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   const ensureVisitorId = () => {
     if (typeof window === "undefined") return null;
@@ -1090,381 +1033,255 @@ export default function MainPage() {
 
   return (
     <>
-  
-      <div className="space-y-5 sm:space-y-6 flex flex-col items-center justify-center min-h-screen py-4 sm:py-8 px-2 sm:px-5 bg-gray-100 text-slate-900 relative overflow-hidden">
-
-      <div className="w-full max-w-[1400px] flex-col flex justify-center space-y-4 sm:space-y-6 md:space-y-7">
-        {!user && (
-          <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_0.7fr] gap-5 lg:gap-6 items-center">
-            <div className="space-y-3 text-left">
-              <h1 className="text-2xl sm:text-3xl font-semibold uppercase mt-2 sm:mt-4 text-slate-900 press-start">
-                Because you love yapping about games.
-              </h1>
-              <p className="text-base sm:text-lg text-slate-700 font-[500]">
-               A desktop-friendly notes app for BlueSky. 
-              </p>
-              <div className="flex flex-col md:flex-row flex-wrap gap-2">
-               
-                   <span className="mr-2 inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                  <span className="h-2 w-2 rounded-full bg-rose-400 inline-block" />
-                  No account necessary
-                </span>
-                <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                  <span className="h-2 w-2 rounded-full bg-sky-400 inline-block" />
-                  Post to BlueSky with your app password
-                </span>
-             
-              
-               
-                <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                  <span className="h-2 w-2 rounded-full bg-purple-400 inline-block" />
-                  Video posting ready today
-                </span>
-          
-                
-              </div>
+      <div className="min-h-screen bg-gray-100 text-slate-900 py-6">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-6 space-y-8">
+          {(threadMessage || exportMessage || deleteMessage || editMessage || storageMessage) && (
+            <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+              {[threadMessage, exportMessage, deleteMessage, editMessage, storageMessage]
+                .filter(Boolean)
+                .map((msg, idx) => {
+                  const text = String(msg);
+                  const isError =
+                    text.toLowerCase().includes("fail") ||
+                    text.toLowerCase().includes("error");
+                  return (
+                    <div
+                      key={`${text}-${idx}`}
+                      className={`rounded border px-4 py-3 text-sm shadow-lg ${
+                        isError
+                          ? "border-rose-200 bg-rose-50 text-rose-800"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      }`}
+                    >
+                      {text}
+                    </div>
+                  );
+                })}
             </div>
-            <div className="relative">
-              <div className="rounded-2xl border border-gray-200 bg-white shadow-xl p-4 sm:p-5">
-                <div className="flex items-center justify-between text-xs text-slate-600 mb-3">
-                  <span className="font-semibold text-slate-900">Composer preview</span>
-                  <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px]">
-                    Free posts enabled
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  <div className="h-3 w-2/3 rounded bg-gray-200" />
-                  <div className="h-3 w-1/2 rounded bg-gray-200" />
-                  <div className="h-24 rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 shadow-inner" />
-                  <div className="flex gap-2">
-                    <div className="flex-1 rounded-md border border-sky-200 bg-sky-50 text-sky-700 text-center py-2 text-xs font-semibold shadow">
-                      Post to Bluesky (free)
-                    </div>
-                    <div className="flex-1 rounded-md border border-pink-200 bg-pink-50 text-pink-700 text-center py-2 text-xs font-semibold shadow">
-                      Thread preview
-                    </div>
-                  </div>
-                </div>
-              </div>
+          )}
+          {upgradeMessage && (
+            <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm">
+              {upgradeMessage}
             </div>
-          </div>
-        )}
-        {/* Inline messages (upgrade/sync) */}
-        {upgradeMessage && (
-          <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm">
-            {upgradeMessage}
-          </div>
-        )}
-        {syncMessage && (
-          <div className="mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 shadow-sm">
-            {syncMessage}
-          </div>
-        )}
-        {(threadMessage || exportMessage || deleteMessage || editMessage || storageMessage) && (
-          <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
-            {[threadMessage, exportMessage, deleteMessage, editMessage, storageMessage]
-              .filter(Boolean)
-              .map((msg, idx) => {
-                const text = String(msg);
-                const isError =
-                  text.toLowerCase().includes("fail") ||
-                  text.toLowerCase().includes("error");
-                return (
-                  <div
-                    key={`${text}-${idx}`}
-                    className={`rounded border px-4 py-3 text-sm shadow-lg ${
-                      isError
-                        ? "border-rose-200 bg-rose-50 text-rose-800"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    }`}
-                  >
-                    {text}
-                  </div>
-                );
-              })}
-          </div>
-        )}
+          )}
+          {syncMessage && (
+            <div className="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 shadow-sm">
+              {syncMessage}
+            </div>
+          )}
 
-        {/* Main layout: composer/notes + Discover feed */}
-        <div className="">
-          <div className="space-y-4 w-full">
-        {!user && (
-          <>
-           
-          
-            <section id="app-password-steps" className="my-24 space-y-6">
-              <div className="text-center">
-                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">No account required</p>
-                <h3 className="text-3xl font-bold text-slate-900 mt-2">All you need is a BlueSky app password</h3>
-                <p className="text-sm text-slate-600 mt-2">Follow these quick steps once. Composer stores your handle + app password securely in your browser.</p>
-              </div>
-              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-                {APP_PASSWORD_STEPS.map((step, idx) => (
-                  <div key={step.title} className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Step {idx + 1}</p>
-                      <span className="text-[11px] text-slate-400">{idx < 3 ? "BlueSky app" : "Composer"}</span>
-                    </div>
-                    <h4 className="text-lg font-semibold text-slate-900">{step.title}</h4>
-                    <p className="text-sm text-slate-700">{step.description}</p>
-                    {step.image ? (
-                      <Image
-                        src={step.image}
-                        alt={step.title}
-                        width={400}
-                        height={280}
-                        className="w-full rounded-xl border border-slate-200 shadow-sm object-cover"
-                      />
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-500">
-                        Paste the password into the Composer’s Bluesky login section.
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-
-        <div className="mt-24 grid grid-cols-1 gap-6 items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,640px)_minmax(0,520px)]">
-          <div className="space-y-4" id="composer-root">
-            {replyTarget && (
-              <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">Selected post</div>
-                    <div className="font-semibold text-slate-900">
-                      {replyTarget.authorDisplay || replyTarget.authorHandle}
-                    </div>
-                    <div className="text-xs text-slate-500">{replyTarget.authorHandle}</div>
-                    {replyTarget.feedName && (
-                      <div className="text-[11px] text-slate-500">Feed: {replyTarget.feedName}</div>
-                    )}
-                  </div>
+          <div className="grid gap-0 xl:grid-cols-[1fr_1.25fr_1fr] bg-white/70 border border-slate-200 rounded-xl overflow-hidden divide-y xl:divide-y-0 xl:divide-x divide-slate-200">
+            <div className="p-4 sm:p-6 space-y-3" id="composer-root">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-800">Reply context</h3>
+                {replyTarget ? (
                   <button
                     className="text-xs text-slate-600 underline"
                     onClick={() => setReplyTarget(null)}
                   >
                     Clear
                   </button>
-                </div>
-                <p className="mt-2 whitespace-pre-wrap break-words text-slate-800">
-                  {replyTarget.contentSummary || replyTarget.text || "(no text)"}
-                </p>
-                {Array.isArray(replyTarget.images) && replyTarget.images.length > 0 && (
-                  <div className="mt-3 grid grid-cols-1 gap-3">
-                    {replyTarget.images.slice(0, 4).map((img: any, idx: number) => (
-                      <div key={idx} className="relative overflow-hidden rounded border border-sky-100 bg-white">
-                        {img?.thumb ? (
-                          <Image
-                            src={img.thumb}
-                            alt={img.alt || "Discover image"}
-                            width={420}
-                            height={280}
-                            className="w-full h-auto object-cover"
-                          />
-                        ) : null}
-                      </div>
-                    ))}
+                ) : null}
+              </div>
+              {replyTarget ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-900">
+                    {replyTarget.authorDisplay || replyTarget.authorHandle}
                   </div>
-                )}
-              </div>
-            )}
+                  <div className="text-xs text-slate-500">{replyTarget.authorHandle}</div>
+                  {replyTarget.feedName && (
+                    <div className="text-[11px] text-slate-500">Feed: {replyTarget.feedName}</div>
+                  )}
+                  <p className="whitespace-pre-wrap break-words text-slate-800">
+                    {replyTarget.contentSummary || replyTarget.text || "(no text)"}
+                  </p>
+                  {Array.isArray(replyTarget.images) && replyTarget.images.length > 0 && (
+                    <div className="mt-3 grid grid-cols-1 gap-3">
+                      {replyTarget.images.slice(0, 4).map((img: any, idx: number) => (
+                        <div key={idx} className="relative overflow-hidden rounded border border-sky-100 bg-white">
+                          {img?.thumb ? (
+                            <Image
+                              src={img.thumb}
+                              alt={img.alt || "Discover image"}
+                              width={420}
+                              height={280}
+                              className="w-full h-auto object-cover"
+                            />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-600">
+                  Pick a post from your timeline (right column) to reply or quote.
+                </p>
+              )}
+            </div>
+
+            <div className="p-4 sm:p-6 bg-transparent">
+              {user ? (
+                <div className="flex justify-end mb-2">
+                  <LogoutButton />
+                </div>
+              ) : null}
+              <Composer
+                onNoteSaved={fetchNotes}
+                onLocalSave={addLocalNote}
+                user={user}
+                isPro={plan === "pro"}
+                replyTarget={replyTarget ? { uri: replyTarget.uri, cid: replyTarget.cid } : null}
+                flat
+              />
+            </div>
+
+            <div className="p-4 sm:p-6">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Timeline</h3>
+              <DiscoverFeed enabled onSelect={setReplyTarget} />
+            </div>
           </div>
 
-          <div className="space-y-4 max-w-[650px] mx-auto">
-            {user ? <div className="mt-2"><LogoutButton /></div> : null }
-            {/* Composer always visible; saves locally when logged out, Supabase + local when logged in */}
-            {!user && (
-              <div className="mb-3 w-full flex flex-wrap gap-2 justify-center">
-            
+          <div className="grid gap-0 xl:grid-cols-2 bg-white/70 border border-slate-200 rounded-xl overflow-hidden divide-y xl:divide-y-0 xl:divide-x divide-slate-200">
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-800">Notes & threads</h3>
               </div>
-            )}
-        <Composer
-          onNoteSaved={fetchNotes}
-          onLocalSave={addLocalNote}
-          user={user}
-          isPro={plan === "pro"}
-          replyTarget={replyTarget ? { uri: replyTarget.uri, cid: replyTarget.cid } : null}
-        />
-          </div>
+              {pinnedCount > 0 && (
+                <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {pinInfo || "Pinned notes stay at the top. Unpin to reorder them. Dragging is only available for unpinned notes."}
+                </div>
+              )}
+              <NotesList
+                notes={sortedNotes}
+                onDelete={deleteNote}
+                onReorder={reorderNotes}
+                onMoveRelative={moveRelative}
+                onUpdate={updateNoteContent}
+                onUpdateImageAlt={updateNoteImageAlt}
+                metadata={metadata}
+                onTogglePin={togglePin}
+                onAddTag={addTag}
+                onRemoveTag={removeTag}
+                canOrganize
+                allowThreadSelect
+                threadSelectEnabled
+                selectedForThread={threadSelection}
+                onToggleThreadSelect={toggleThreadSelect}
+                onSelectAllThreads={selectAllThreadNotes}
+                onClearThreadSelection={clearThreadSelection}
+                onDeleteSelectedThreadNotes={deleteSelectedThreadNotes}
+              />
 
-          <DiscoverFeed enabled onSelect={setReplyTarget} />
-        </div>
-
-        {/* Notes + thread controls below the grid, full width */}
-        {pinnedCount > 0 && (
-          <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {pinInfo || "Pinned notes stay at the top. Unpin to reorder them. Dragging is only available for unpinned notes."}
-          </div>
-        )}
-
-        <NotesList
-          notes={sortedNotes}
-          onDelete={deleteNote}
-          onReorder={reorderNotes}
-          onMoveRelative={moveRelative}
-          onUpdate={updateNoteContent}
-          onUpdateImageAlt={updateNoteImageAlt}
-          metadata={metadata}
-          onTogglePin={togglePin}
-          onAddTag={addTag}
-          onRemoveTag={removeTag}
-          canOrganize
-          allowThreadSelect
-          threadSelectEnabled
-          selectedForThread={threadSelection}
-          onToggleThreadSelect={toggleThreadSelect}
-          onSelectAllThreads={selectAllThreadNotes}
-          onClearThreadSelection={clearThreadSelection}
-          onDeleteSelectedThreads={deleteSelectedThreadNotes}
-        />
-
-        <>
-          {selectedThreadNotes.length > 0 && (
-            <div className="mt-4 w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
-                <span className="text-xs text-sky-700">
-                  Posts publish in this order (pinned stay first).
-                </span>
-              </div>
-              <ol className="mt-2 space-y-1 text-sm text-sky-900">
-                {selectedThreadNotes.map((n, idx) => (
-                  <li key={n.id} className="flex items-start gap-2">
-                    <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
-                      {idx + 1}
+              {selectedThreadNotes.length > 0 && (
+                <div className="w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
+                    <span className="text-xs text-sky-700">
+                      Posts publish in this order (pinned stay first).
                     </span>
-                    <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-          <div className="mt-4 w-full lg:justify-center flex flex-wrap flex-col gap-2 sm:flex-row sm:justify-end sm:items-center">
-            <div className="flex flex-col gap-1 w-full sm:w-auto">
-              <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
-              <select
-                  value={replyControl}
-                  onChange={(e) => setReplyControl(e.target.value as any)}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
-                >
-                  <option value="anyone">Anyone can reply</option>
-                  <option value="no_replies">No replies (lock thread)</option>
-                  <option value="mentions">Only people mentioned</option>
-                  <option value="followers">Only my followers</option>
-                  <option value="following">Only people I follow</option>
-                  <option value="list">Only people on a list (enter list AT-URI)</option>
-                </select>
-                {replyControl === "list" && (
-                  <input
-                    value={replyListUri}
-                    onChange={(e) => setReplyListUri(e.target.value)}
-                    placeholder="at://did:example/app.bsky.graph.list/xxxx"
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
-                  />
-                )}
-              </div>
-          <div className="flex flex-row mt-4 items-center gap-2 flex-wrap">
-                <button
-                onClick={() => exportCloudNotes("json")}
-                disabled={exporting || !user}
-                className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                  exporting || !user ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
-                }`}
-              >
-                {exporting ? "Exporting..." : "Export notes (JSON)"}
-              </button>
-              <button
-                onClick={() => exportCloudNotes("md")}
-                disabled={exporting || !user}
-                className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                  exporting || !user ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
-                }`}
-              >
-                {exporting ? "Exporting..." : "Export notes (Markdown)"}
-              </button>
-              <button
-                onClick={postThreadToBluesky}
-                disabled={postingThread || threadSelection.size === 0}
-                className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"}`}
-              >
-                {postingThread ? "Posting to BlueSky..." : "Post selected to BlueSky"}
-              </button>
-              <button
-                onClick={() => {
-                  const selectedNotes = sortedNotes.filter((n) => threadSelection.has(n.id));
-                  const text = selectedNotes.map((n) => n.plaintext || "").join("\n\n---\n\n");
-                  if (!text.trim()) {
-                    setThreadMessage("Select at least one note to copy.");
-                    setTimeout(() => setThreadMessage(null), 3000);
-                    return;
-                  }
-                  void navigator.clipboard.writeText(text).then(() => {
-                    setThreadMessage("Copied selected notes for thread.");
-                    setTimeout(() => setThreadMessage(null), 3000);
-                  }).catch(() => {
-                    setThreadMessage("Failed to copy notes.");
-                    setTimeout(() => setThreadMessage(null), 3000);
-                  });
-                }}
-                className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto bg-slate-600 hover:bg-slate-700`}
-                disabled={threadSelection.size === 0}
-              >
-                Copy selected (thread)
-              </button>
-            </div>
-          </div>
-        </>
+                  </div>
+                  <ol className="mt-2 space-y-1 text-sm text-sky-900">
+                    {selectedThreadNotes.map((n, idx) => (
+                      <li key={n.id} className="flex items-start gap-2">
+                        <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
+                          {idx + 1}
+                        </span>
+                        <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
 
-      <div className="flex flex-col justify-center items-center">
-        <div className="mt-24 mb-4 p-4 max-w-[900px] border rounded bg-white shadow-sm">
-          <h4 className="text-lg sm:text-xl md:text-2xl font-bold mb-2">Early Access Roadmap</h4>
-          <p className="text-sm sm:text-base md:text-lg text-gray-600 mb-3">
-            You’re getting everything for free while I build out the feature set. Here’s what’s live (and what’s coming) during early access:
-          </p>
-          <div className="overflow-x-auto">
-            <table className="min-w-full	text-sm sm:text-base md:text-lg text-left border">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 border text-sm sm:text-base md:text-lg">Feature</th>
-                  <th className="px-3 py-2 border text-sm sm:text-base md:text-lg">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { feature: "Post threads to Bluesky", status: "Available now" },
-                  { feature: "Post videos to Bluesky", status: "Available now" },
-                  { feature: "Organize notes (drag/drop + up/down + tags/pins)", status: "Available now" },
-                  { feature: "Discover/Following/Mutuals feeds", status: "Available now" },
-                  { feature: "Export notes (JSON + Markdown)", status: "Available now" },
-                  { feature: "Version history & restore", status: "Coming later" },
-                  { feature: "Advanced search & filters", status: "Coming later" },
-                ].map((row) => (
-                  <tr key={row.feature}>
-                    <td className="px-3 py-2 border">{row.feature}</td>
-                    <td className={`px-3 py-2 border ${row.status.includes("Available") ? "text-emerald-700" : "text-orange-600"}`}>
-                      {row.status}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              <div className="w-full flex flex-wrap gap-3 items-start justify-between">
+                <div className="flex flex-col gap-1 w-full sm:w-auto">
+                  <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
+                  <select
+                    value={replyControl}
+                    onChange={(e) => setReplyControl(e.target.value as any)}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
+                  >
+                    <option value="anyone">Anyone can reply</option>
+                    <option value="no_replies">No replies (lock thread)</option>
+                    <option value="mentions">Only people mentioned</option>
+                    <option value="followers">Only my followers</option>
+                    <option value="following">Only people I follow</option>
+                    <option value="list">Only people on a list (enter list AT-URI)</option>
+                  </select>
+                  {replyControl === "list" && (
+                    <input
+                      value={replyListUri}
+                      onChange={(e) => setReplyListUri(e.target.value)}
+                      placeholder="at://did:example/app.bsky.graph.list/xxxx"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
+                    />
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => exportCloudNotes("json")}
+                    disabled={exporting || !user}
+                    className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                      exporting || !user ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
+                    }`}
+                  >
+                    {exporting ? "Exporting..." : "Export notes (JSON)"}
+                  </button>
+                  <button
+                    onClick={() => exportCloudNotes("md")}
+                    disabled={exporting || !user}
+                    className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                      exporting || !user ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
+                    }`}
+                  >
+                    {exporting ? "Exporting..." : "Export notes (Markdown)"}
+                  </button>
+                  <button
+                    onClick={postThreadToBluesky}
+                    disabled={postingThread || threadSelection.size === 0}
+                    className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                      postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"
+                    }`}
+                  >
+                    {postingThread ? "Posting to BlueSky..." : "Post selected to BlueSky"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const selectedNotes = sortedNotes.filter((n) => threadSelection.has(n.id));
+                      const text = selectedNotes.map((n) => n.plaintext || "").join("\n\n---\n\n");
+                      if (!text.trim()) {
+                        setThreadMessage("Select at least one note to copy.");
+                        setTimeout(() => setThreadMessage(null), 3000);
+                        return;
+                      }
+                      void navigator.clipboard.writeText(text).then(() => {
+                        setThreadMessage("Copied selected notes for thread.");
+                        setTimeout(() => setThreadMessage(null), 3000);
+                      }).catch(() => {
+                        setThreadMessage("Failed to copy notes.");
+                        setTimeout(() => setThreadMessage(null), 3000);
+                      });
+                    }}
+                    className="px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto bg-slate-600 hover:bg-slate-700"
+                    disabled={threadSelection.size === 0}
+                  >
+                    Copy selected (thread)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-800">Reading sessions</h3>
+              </div>
+              <ReadingSessionCard />
+            </div>
           </div>
         </div>
-     
       </div>
-      <footer className="mt-24 text-center text-gray-500 text-sm">
-        &copy; {new Date().getFullYear()} BlueSky Composer. Built with NextJS, React, TailwindCSS, and ❤️ by <a href="https://robhutters.com" className="underline">Rob Hutters</a>. Hosted on <a href="https://vercel.com" className="underline">Vercel</a>.
-      </footer>
-    </div>
-  </div>
-  </div>
-  </div>
-  <FloatingProfile />
-
-</>
-
+      <FloatingProfile />
+    </>
   );
 }

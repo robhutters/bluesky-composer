@@ -15,12 +15,14 @@ export default function Composer({
   user,
   isPro,
   replyTarget,
+  flat = false,
 }: {
   onNoteSaved: () => void;
   onLocalSave: (content: string, images?: { data: string; alt: string }[]) => void;
   user: any;
   isPro: boolean;
   replyTarget?: { uri: string; cid: string } | null;
+  flat?: boolean;
 }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -577,7 +579,11 @@ export default function Composer({
   const canPost = text.length > 0 || attachmentsSelected;
 
   return (
-    <div className="w-full max-w-[600px] mx-auto mt-4 p-4 sm:p-6 border border-gray-200 rounded-lg bg-white shadow-sm">
+    <div
+      className={`w-full max-w-[600px] mx-auto mt-4 p-4 sm:p-6 border ${
+        flat ? "border-slate-200 bg-transparent shadow-none" : "border-gray-200 bg-white shadow-sm"
+      } rounded-lg`}
+    >
       <h2 className="text-xl font-semibold mb-4">BlueSky Composer</h2>
       {flashMessage && (
         <div className="fixed top-4 right-4 z-50 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg">
