@@ -1132,9 +1132,9 @@ export default function MainPage() {
                     threadSelectEnabled
                     selectedForThread={threadSelection}
                     onToggleThreadSelect={toggleThreadSelect}
-                    onSelectAllThreadNotes={selectAllThreadNotes}
+                    onSelectAllThreads={selectAllThreadNotes}
                     onClearThreadSelection={clearThreadSelection}
-                    onDeleteSelectedThreadNotes={deleteSelectedThreadNotes}
+                    onDeleteSelectedThreads={deleteSelectedThreadNotes}
                   />
 
                   {selectedThreadNotes.length > 0 && (
