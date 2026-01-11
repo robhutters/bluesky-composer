@@ -8,9 +8,7 @@ import { FloatingProfile } from "./components/FloatingProfile";
 import LogoutButton from "./components/LogoutButton";
 import { useAuth } from "./providers/AuthProvider";
 import { loadImagesForKey, saveImagesForKey, deleteImagesForKey } from "./lib/indexedImages";
-import DiscoverFeed from "./components/DiscoverFeed";
-import ReadingSessionCard from "./components/ReadingSessionCard";
-import Image from "next/image";
+import ReadingSessionCard, { SessionRecord } from "./components/ReadingSessionCard";
 
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
@@ -27,12 +25,26 @@ type NoteMeta = {
   versions?: { content: string; created_at: string }[];
 };
 
+type GamingSessionSnapshot = SessionRecord;
+
 const sortOldestFirst = (list: any[]) => {
   return [...(Array.isArray(list) ? list : [])].sort((a, b) => {
     const dateA = new Date(a?.created_at || a?.createdAt || a?.updated_at || 0).getTime() || 0;
     const dateB = new Date(b?.created_at || b?.createdAt || b?.updated_at || 0).getTime() || 0;
     return dateA - dateB;
   });
+};
+
+const formatSessionDuration = (ms: number) => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const remMins = minutes % 60;
+    return `${hours}h ${remMins}m`;
+  }
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 };
 
 export default function MainPage() {
@@ -58,8 +70,8 @@ export default function MainPage() {
   const [pinInfo, setPinInfo] = useState<string | null>(null);
   const [notesLoading, setNotesLoading] = useState(false);
   const lastStableNotesRef = useRef<any[]>([]);
+  const [sessionHistory, setSessionHistory] = useState<GamingSessionSnapshot[]>([]);
   const hasCustomOrderRef = useRef<boolean>(false);
-  const [replyTarget, setReplyTarget] = useState<any | null>(null);
 
   const ensureVisitorId = () => {
     if (typeof window === "undefined") return null;
@@ -1070,228 +1082,216 @@ export default function MainPage() {
             </div>
           )}
 
-          <div className="grid gap-0 xl:grid-cols-[0.8fr_1.1fr_1.1fr] bg-white/70 border border-slate-200 rounded-xl overflow-hidden divide-y xl:divide-y-0 xl:divide-x divide-slate-200">
-            <div className="p-4 sm:p-6 space-y-3" id="composer-root">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-800">Reply context</h3>
-                {replyTarget ? (
-                  <button
-                    className="text-xs text-slate-600 underline"
-                    onClick={() => setReplyTarget(null)}
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-              {replyTarget ? (
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {replyTarget.authorDisplay || replyTarget.authorHandle}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-6">
+              <div className="rounded-xl border border-slate-200 bg-white/80 p-4 sm:p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Compose</p>
+                    <h3 className="text-lg font-semibold text-slate-900">Notes + posts</h3>
                   </div>
-                  <div className="text-xs text-slate-500">{replyTarget.authorHandle}</div>
-                  {replyTarget.feedName && (
-                    <div className="text-[11px] text-slate-500">Feed: {replyTarget.feedName}</div>
-                  )}
-                  <p className="whitespace-pre-wrap break-words text-slate-800">
-                    {replyTarget.contentSummary || replyTarget.text || "(no text)"}
-                  </p>
-                  {Array.isArray(replyTarget.images) && replyTarget.images.length > 0 && (
-                    <div className="mt-3 grid grid-cols-1 gap-3">
-                      {replyTarget.images.slice(0, 4).map((img: any, idx: number) => (
-                        <div key={idx} className="relative overflow-hidden rounded border border-sky-100 bg-white">
-                          {img?.thumb ? (
-                            <Image
-                              src={img.thumb}
-                              alt={img.alt || "Discover image"}
-                              width={420}
-                              height={280}
-                              className="w-full h-auto object-cover"
-                            />
-                          ) : null}
-                        </div>
-                      ))}
+                  {user ? (
+                    <div className="flex items-center gap-2">
+                      <LogoutButton />
+                    </div>
+                  ) : null}
+                </div>
+                <Composer
+                  onNoteSaved={fetchNotes}
+                  onLocalSave={addLocalNote}
+                  user={user}
+                  isPro={plan === "pro"}
+                  replyTarget={null}
+                  flat
+                />
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white/80 overflow-hidden shadow-sm divide-y">
+                <div className="p-4 sm:p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-slate-800">Notes & threads</h3>
+                  </div>
+                  {pinnedCount > 0 && (
+                    <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      {pinInfo || "Pinned notes stay at the top. Unpin to reorder them. Dragging is only available for unpinned notes."}
                     </div>
                   )}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-600">
-                  Pick a post from your timeline (right column) to reply or quote.
-                </p>
-              )}
-            </div>
+                  <NotesList
+                    notes={sortedNotes}
+                    onDelete={deleteNote}
+                    onReorder={reorderNotes}
+                    onMoveRelative={moveRelative}
+                    onUpdate={updateNoteContent}
+                    onUpdateImageAlt={updateNoteImageAlt}
+                    metadata={metadata}
+                    onTogglePin={togglePin}
+                    onAddTag={addTag}
+                    onRemoveTag={removeTag}
+                    canOrganize
+                    allowThreadSelect
+                    threadSelectEnabled
+                    selectedForThread={threadSelection}
+                    onToggleThreadSelect={toggleThreadSelect}
+                    onSelectAllThreadNotes={selectAllThreadNotes}
+                    onClearThreadSelection={clearThreadSelection}
+                    onDeleteSelectedThreadNotes={deleteSelectedThreadNotes}
+                  />
 
-            <div className="p-4 sm:p-6 bg-transparent">
-              {user ? (
-                <div className="flex justify-end mb-2">
-                  <LogoutButton />
-                </div>
-              ) : null}
-              <Composer
-                onNoteSaved={fetchNotes}
-                onLocalSave={addLocalNote}
-                user={user}
-                isPro={plan === "pro"}
-                replyTarget={replyTarget ? { uri: replyTarget.uri, cid: replyTarget.cid } : null}
-                flat
-              />
-            </div>
-
-            <div className="p-4 sm:p-6">
-              <h3 className="text-sm font-semibold text-slate-800 mb-3">Timeline</h3>
-              <DiscoverFeed enabled onSelect={setReplyTarget} />
-            </div>
-          </div>
-
-          <div className="grid gap-0 xl:grid-cols-2 bg-white/70 border border-slate-200 rounded-xl overflow-hidden divide-y xl:divide-y-0 xl:divide-x divide-slate-200">
-            <div className="p-4 sm:p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-800">Notes & threads</h3>
-              </div>
-              {pinnedCount > 0 && (
-                <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  {pinInfo || "Pinned notes stay at the top. Unpin to reorder them. Dragging is only available for unpinned notes."}
-                </div>
-              )}
-              <NotesList
-                notes={sortedNotes}
-                onDelete={deleteNote}
-                onReorder={reorderNotes}
-                onMoveRelative={moveRelative}
-                onUpdate={updateNoteContent}
-                onUpdateImageAlt={updateNoteImageAlt}
-                metadata={metadata}
-                onTogglePin={togglePin}
-                onAddTag={addTag}
-                onRemoveTag={removeTag}
-                canOrganize
-                allowThreadSelect
-                threadSelectEnabled
-                selectedForThread={threadSelection}
-                onToggleThreadSelect={toggleThreadSelect}
-                onSelectAllThreads={selectAllThreadNotes}
-                onClearThreadSelection={clearThreadSelection}
-                onDeleteSelectedThreadNotes={deleteSelectedThreadNotes}
-              />
-
-              {selectedThreadNotes.length > 0 && (
-                <div className="w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
-                    <span className="text-xs text-sky-700">
-                      Posts publish in this order (pinned stay first).
-                    </span>
-                  </div>
-                  <ol className="mt-2 space-y-1 text-sm text-sky-900">
-                    {selectedThreadNotes.map((n, idx) => (
-                      <li key={n.id} className="flex items-start gap-2">
-                        <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
-                          {idx + 1}
+                  {selectedThreadNotes.length > 0 && (
+                    <div className="w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
+                        <span className="text-xs text-sky-700">
+                          Posts publish in this order (pinned stay first).
                         </span>
-                        <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-
-              <div className="w-full flex flex-wrap gap-3 items-start justify-between">
-                <div className="flex flex-col gap-1 w-full sm:w-auto">
-                  <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
-                  <select
-                    value={replyControl}
-                    onChange={(e) => setReplyControl(e.target.value as any)}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
-                  >
-                    <option value="anyone">Anyone can reply</option>
-                    <option value="no_replies">No replies (lock thread)</option>
-                    <option value="mentions">Only people mentioned</option>
-                    <option value="followers">Only my followers</option>
-                    <option value="following">Only people I follow</option>
-                    <option value="list">Only people on a list (enter list AT-URI)</option>
-                  </select>
-                  {replyControl === "list" && (
-                    <input
-                      value={replyListUri}
-                      onChange={(e) => setReplyListUri(e.target.value)}
-                      placeholder="at://did:example/app.bsky.graph.list/xxxx"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
-                    />
+                      </div>
+                      <ol className="mt-2 space-y-1 text-sm text-sky-900">
+                        {selectedThreadNotes.map((n, idx) => (
+                          <li key={n.id} className="flex items-start gap-2">
+                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
+                              {idx + 1}
+                            </span>
+                            <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
                   )}
-                </div>
-                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                  <button
-                    onClick={() => exportCloudNotes("json")}
-                    disabled={exporting || !user}
-                    className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                      exporting || !user ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
-                    }`}
-                  >
-                    {exporting ? "Exporting..." : "Export notes (JSON)"}
-                  </button>
-                  <button
-                    onClick={() => exportCloudNotes("md")}
-                    disabled={exporting || !user}
-                    className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                      exporting || !user ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
-                    }`}
-                  >
-                    {exporting ? "Exporting..." : "Export notes (Markdown)"}
-                  </button>
-                  <button
-                    onClick={postThreadToBluesky}
-                    disabled={postingThread || threadSelection.size === 0}
-                    className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                      postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"
-                    }`}
-                  >
-                    {postingThread ? "Posting to BlueSky..." : "Post selected to BlueSky"}
-                  </button>
-                  <button
-                    onClick={() => {
-                      const selectedNotes = sortedNotes.filter((n) => threadSelection.has(n.id));
-                      const text = selectedNotes.map((n) => n.plaintext || "").join("\n\n---\n\n");
-                      if (!text.trim()) {
-                        setThreadMessage("Select at least one note to copy.");
-                        setTimeout(() => setThreadMessage(null), 3000);
-                        return;
-                      }
-                      void navigator.clipboard.writeText(text).then(() => {
-                        setThreadMessage("Copied selected notes for thread.");
-                        setTimeout(() => setThreadMessage(null), 3000);
-                      }).catch(() => {
-                        setThreadMessage("Failed to copy notes.");
-                        setTimeout(() => setThreadMessage(null), 3000);
-                      });
-                    }}
-                    className="px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto bg-slate-600 hover:bg-slate-700"
-                    disabled={threadSelection.size === 0}
-                  >
-                    Copy selected (thread)
-                  </button>
+
+                  <div className="w-full flex flex-wrap gap-3 items-start justify-between">
+                    <div className="flex flex-col gap-1 w-full sm:w-auto">
+                      <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
+                      <select
+                        value={replyControl}
+                        onChange={(e) => setReplyControl(e.target.value as any)}
+                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
+                      >
+                        <option value="anyone">Anyone can reply</option>
+                        <option value="no_replies">No replies (lock thread)</option>
+                        <option value="mentions">Only people mentioned</option>
+                        <option value="followers">Only my followers</option>
+                        <option value="following">Only people I follow</option>
+                        <option value="list">Only people on a list (enter list AT-URI)</option>
+                      </select>
+                      {replyControl === "list" && (
+                        <input
+                          value={replyListUri}
+                          onChange={(e) => setReplyListUri(e.target.value)}
+                          placeholder="at://did:example/app.bsky.graph.list/xxxx"
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={() => exportCloudNotes("json")}
+                        disabled={exporting || !user}
+                        className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                          exporting || !user ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
+                        }`}
+                      >
+                        {exporting ? "Exporting..." : "Export notes (JSON)"}
+                      </button>
+                      <button
+                        onClick={() => exportCloudNotes("md")}
+                        disabled={exporting || !user}
+                        className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                          exporting || !user ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
+                        }`}
+                      >
+                        {exporting ? "Exporting..." : "Export notes (Markdown)"}
+                      </button>
+                      <button
+                        onClick={postThreadToBluesky}
+                        disabled={postingThread || threadSelection.size === 0}
+                        className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                          postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"
+                        }`}
+                      >
+                        {postingThread ? "Posting to BlueSky..." : "Post selected to BlueSky"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const selectedNotes = sortedNotes.filter((n) => threadSelection.has(n.id));
+                          const text = selectedNotes.map((n) => n.plaintext || "").join("\n\n---\n\n");
+                          if (!text.trim()) {
+                            setThreadMessage("Select at least one note to copy.");
+                            setTimeout(() => setThreadMessage(null), 3000);
+                            return;
+                          }
+                          void navigator.clipboard.writeText(text).then(() => {
+                            setThreadMessage("Copied selected notes for thread.");
+                            setTimeout(() => setThreadMessage(null), 3000);
+                          }).catch(() => {
+                            setThreadMessage("Failed to copy notes.");
+                            setTimeout(() => setThreadMessage(null), 3000);
+                          });
+                        }}
+                        className="px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto bg-slate-600 hover:bg-slate-700"
+                        disabled={threadSelection.size === 0}
+                      >
+                        Copy selected (thread)
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 sm:p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-800">Reading sessions</h3>
+            <div className="space-y-6">
+              <div className="rounded-xl border border-slate-200 bg-white/80 p-4 sm:p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Gaming sessions</p>
+                    <h3 className="text-lg font-semibold text-slate-900">Capture your playthroughs</h3>
+                  </div>
+                </div>
+                <ReadingSessionCard onSessionsChange={setSessionHistory} />
               </div>
-              <ReadingSessionCard />
+              <div className="rounded-xl border border-slate-200 bg-white/80 p-4 sm:p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">History</p>
+                    <h3 className="text-lg font-semibold text-slate-900">Previous sessions</h3>
+                  </div>
+                  <span className="text-xs text-slate-600">{sessionHistory.length} saved</span>
+                </div>
+                {sessionHistory.length === 0 ? (
+                  <p className="text-sm text-slate-600">No gaming sessions yet. Start one to see it here.</p>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-1">
+                    {sessionHistory.map((s) => (
+                      <div key={s.id} className="rounded-xl border border-slate-200 bg-white/70 p-3 shadow-sm">
+                        <div className="flex items-center justify-between text-xs text-slate-600">
+                          <span>{new Date(s.id).toLocaleString()}</span>
+                          <span className="font-semibold text-slate-800">{formatSessionDuration(s.durationMs)}</span>
+                        </div>
+                        <p className="mt-2 text-sm font-semibold text-slate-900 whitespace-pre-wrap break-words">
+                          {s.thoughts || "(no quote)"}
+                        </p>
+                        {s.gameTitle ? (
+                          <p className="mt-1 text-xs italic text-slate-700">— {s.gameTitle}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 bg-white/80 border border-slate-200 rounded-xl overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-200 p-6">
             <div className="space-y-3">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">About</p>
-              <h3 className="text-xl font-semibold text-slate-900">BlueSky Composer for professional yappers</h3>
+              <h3 className="text-xl font-semibold text-slate-900">BlueSky Composer for gamers who write</h3>
               <p className="text-sm text-slate-700">
-                Built for people who talk for a living: community leads, devrels, creators, founders. Keep your takes, threads,
-                and book notes in one place, then post them to BlueSky without leaving the page.
+                Keep your game-day thoughts, build threads, and share recaps without leaving the app. Capture quotes from sessions,
+                draft long posts, and push finished takes straight to BlueSky.
               </p>
               <ul className="list-disc list-inside text-sm text-slate-700 space-y-1">
-                <li>Post with confidence using drafts, media, and thread tools.</li>
-                <li>Keep your research tidy with notes and reading sessions.</li>
-                <li>Stay in flow with a three-column view: context, composer, and timeline.</li>
+                <li>Notes + threads that stay organized for big posts.</li>
+                <li>Gaming sessions with exports you can share to BlueSky.</li>
+                <li>Local-first storage so your drafts and sessions stay with you.</li>
               </ul>
             </div>
             <div className="space-y-3">

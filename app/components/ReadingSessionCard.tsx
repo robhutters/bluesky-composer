@@ -2,17 +2,20 @@
 
 import { useEffect, useState } from "react";
 
-type SessionRecord = {
+export type SessionRecord = {
   id: number;
   durationMs: number;
   thoughts: string;
-  bookTitle: string;
+  gameTitle: string;
 };
 
 const THOUGHT_LIMIT = 240;
 const STORAGE_KEY = "reading-sessions";
 const BG_KEY = "reading-sessions-bg";
 const SHOW_TIME_KEY = "reading-sessions-show-time";
+const DB_NAME = "reading-sessions-db";
+const DB_VERSION = 1;
+const DB_STORE = "sessions";
 
 function formatMs(ms: number) {
   const totalSeconds = Math.floor(ms / 1000);
@@ -21,12 +24,16 @@ function formatMs(ms: number) {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export default function ReadingSessionCard() {
+type Props = {
+  onSessionsChange?: (sessions: SessionRecord[]) => void;
+};
+
+export default function ReadingSessionCard({ onSessionsChange }: Props) {
   const [sessionActive, setSessionActive] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [thoughts, setThoughts] = useState("");
-  const [bookTitle, setBookTitle] = useState("");
+  const [gameTitle, setGameTitle] = useState("");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [exporting, setExporting] = useState(false);
   const [postMessage, setPostMessage] = useState<string | null>(null);
@@ -34,33 +41,114 @@ export default function ReadingSessionCard() {
   const [backgroundSrc, setBackgroundSrc] = useState<string | null>(null);
   const [showSessionTime, setShowSessionTime] = useState(true);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        setSessions(JSON.parse(stored));
-      } catch {
-        setSessions([]);
+  const isBrowser = typeof window !== "undefined";
+
+  const openDb = () =>
+    new Promise<IDBDatabase>((resolve, reject) => {
+      if (!isBrowser || !("indexedDB" in window)) {
+        reject(new Error("IndexedDB not available"));
+        return;
       }
-    }
-    const storedBg = window.localStorage.getItem(BG_KEY);
-    if (storedBg) {
-      setBackgroundSrc(storedBg);
-    }
-    const storedShow = window.localStorage.getItem(SHOW_TIME_KEY);
-    if (storedShow) {
-      setShowSessionTime(storedShow === "true");
-    }
+      const req = window.indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) {
+          db.createObjectStore(DB_STORE, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+
+  const normalizeSession = (s: any): SessionRecord => ({
+    id: Number(s.id),
+    durationMs: Number(s.durationMs) || 0,
+    thoughts: s.thoughts || "",
+    gameTitle: s.gameTitle ?? s.bookTitle ?? "",
+  });
+
+  const loadSessionsFromDb = async (): Promise<SessionRecord[]> => {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, "readonly");
+      const store = tx.objectStore(DB_STORE);
+      const getReq = store.getAll();
+      getReq.onsuccess = () => {
+        const rows = Array.isArray(getReq.result) ? getReq.result : [];
+        const normalized = rows.map((r) => normalizeSession(r)).sort((a, b) => b.id - a.id);
+        resolve(normalized);
+      };
+      getReq.onerror = () => reject(getReq.error);
+    });
+  };
+
+  const saveSessionsToDb = async (data: SessionRecord[]) => {
+    const db = await openDb();
+    return new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, "readwrite");
+      const store = tx.objectStore(DB_STORE);
+      const clearReq = store.clear();
+      clearReq.onerror = () => reject(clearReq.error);
+      clearReq.onsuccess = () => {
+        data.forEach((item) => store.put(item));
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  };
+
+  useEffect(() => {
+    if (!isBrowser) return;
+    let active = true;
+    (async () => {
+      try {
+        const fromDb = await loadSessionsFromDb();
+        if (active) setSessions(fromDb);
+      } catch {
+        const stored = window.localStorage.getItem(STORAGE_KEY);
+        if (stored && active) {
+          try {
+            const parsed = JSON.parse(stored);
+            const normalized = Array.isArray(parsed) ? parsed.map((r) => normalizeSession(r)).sort((a, b) => b.id - a.id) : [];
+            setSessions(normalized);
+          } catch {
+            setSessions([]);
+          }
+        }
+      }
+      const storedBg = window.localStorage.getItem(BG_KEY);
+      if (storedBg && active) {
+        setBackgroundSrc(storedBg);
+      }
+      const storedShow = window.localStorage.getItem(SHOW_TIME_KEY);
+      if (storedShow && active) {
+        setShowSessionTime(storedShow === "true");
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+    if (!isBrowser) return;
+    (async () => {
+      try {
+        await saveSessionsToDb(sessions);
+      } catch {
+        // ignore; fall back to localStorage
+      }
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+      } catch {
+        // ignore
+      }
+    })();
   }, [sessions]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!isBrowser) return;
     if (backgroundSrc) {
       window.localStorage.setItem(BG_KEY, backgroundSrc);
     } else {
@@ -69,9 +157,13 @@ export default function ReadingSessionCard() {
   }, [backgroundSrc]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!isBrowser) return;
     window.localStorage.setItem(SHOW_TIME_KEY, String(showSessionTime));
   }, [showSessionTime]);
+
+  useEffect(() => {
+    onSessionsChange?.(sessions);
+  }, [sessions, onSessionsChange]);
 
   useEffect(() => {
     if (!sessionActive || !startTime) return;
@@ -86,6 +178,7 @@ export default function ReadingSessionCard() {
     setStartTime(Date.now());
     setElapsed(0);
     setThoughts("");
+    setGameTitle("");
   };
 
   const endSession = () => {
@@ -95,7 +188,7 @@ export default function ReadingSessionCard() {
       id: Date.now(),
       durationMs,
       thoughts,
-      bookTitle,
+      gameTitle,
     };
     setSessions((prev) => [record, ...prev]);
     setSessionActive(false);
@@ -150,7 +243,7 @@ export default function ReadingSessionCard() {
 
     // Typography
     const quoteText = session.thoughts || "Your quote goes here";
-    const subtitle = session.bookTitle ? `— ${session.bookTitle}` : "";
+    const subtitle = session.gameTitle ? `— ${session.gameTitle}` : "";
     const maxWidth = width - 220;
     ctx.textAlign = "center";
     ctx.fillStyle = "white";
@@ -275,7 +368,7 @@ export default function ReadingSessionCard() {
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-slate-700">Capture a quote, add a book title, preview, then export.</p>
+        <p className="text-sm text-slate-700">Capture a quote, add a game title, preview, then export.</p>
         <button
           onClick={sessionActive ? endSession : startSession}
           className={`rounded-full px-3 py-2 text-xs font-semibold ${
@@ -313,24 +406,35 @@ export default function ReadingSessionCard() {
             </div>
           </label>
           <label className="block text-sm text-slate-800">
-            Book title (optional)
+            Game title (optional)
             <input
               className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm text-slate-900 ${
                 sessionActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
               }`}
-              placeholder="e.g. The Midnight Library"
-              value={bookTitle}
-              onChange={(e) => setBookTitle(e.target.value)}
+              placeholder="e.g. Elden Ring"
+              value={gameTitle}
+              onChange={(e) => setGameTitle(e.target.value)}
               disabled={!sessionActive}
             />
           </label>
-          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="text-xs font-semibold text-slate-800">Background image</p>
-            <p className="text-[11px] text-slate-600">
-              Use your own image for the card. Defaults to the built-in blur if none is set.
-            </p>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-800">Background image</p>
+                <p className="text-[11px] text-slate-600">
+                  Pick a mood image for your export. Defaults to the built-in blur.
+                </p>
+              </div>
+              <div className="h-12 w-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-100">
+                {backgroundSrc ? (
+                  <img src={backgroundSrc} alt="Background preview" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="h-full w-full bg-[url('/assets/mood-background.png')] bg-cover bg-center opacity-80" />
+                )}
+              </div>
+            </div>
             <div className="flex items-center gap-2">
-              <label className="flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50">
+              <label className="flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100 shadow-sm">
                 <input
                   type="file"
                   accept="image/*"
