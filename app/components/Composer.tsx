@@ -182,7 +182,12 @@ export default function Composer({
     }
 
     const now = Date.now();
-    if (visitorId && now - lastPingRef.current > ACTIVITY_PING_INTERVAL_MS) {
+    if (
+      visitorId &&
+      now - lastPingRef.current > ACTIVITY_PING_INTERVAL_MS &&
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    ) {
       lastPingRef.current = now;
       void fetch("/api/track-activity", {
         method: "POST",
@@ -223,7 +228,11 @@ export default function Composer({
     );
     if (visitorId) {
       const now = Date.now();
-      if (now - lastSavePingRef.current > 5000) {
+      if (
+        now - lastSavePingRef.current > 5000 &&
+        process.env.NEXT_PUBLIC_SUPABASE_URL &&
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+      ) {
         lastSavePingRef.current = now;
         void fetch("/api/track-save", {
           method: "POST",
@@ -279,7 +288,11 @@ export default function Composer({
       );
       if (visitorId) {
         const now = Date.now();
-        if (now - lastSavePingRef.current > 5000) {
+        if (
+          now - lastSavePingRef.current > 5000 &&
+          process.env.NEXT_PUBLIC_SUPABASE_URL &&
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        ) {
           lastSavePingRef.current = now;
           void fetch("/api/track-save", {
             method: "POST",

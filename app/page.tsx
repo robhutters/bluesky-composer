@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import { contentKey, mergeLocalAndCloud, formatNotesToMarkdown, canExportNotes, sortWithPins } from "./lib/noteUtils";
@@ -9,6 +10,8 @@ import LogoutButton from "./components/LogoutButton";
 import { useAuth } from "./providers/AuthProvider";
 import { loadImagesForKey, saveImagesForKey, deleteImagesForKey } from "./lib/indexedImages";
 import ReadingSessionCard, { SessionRecord } from "./components/ReadingSessionCard";
+import GamingAnalytics from "./components/GamingAnalytics";
+import GameReviewSection from "./components/GameReviewSection";
 
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
@@ -17,6 +20,23 @@ const LOCAL_IMAGE_MAP_KEY = "bsky-composer-note-images";
 const LOCAL_ORDER_KEY = "bsky-composer-note-order";
 const LOCAL_HAS_CUSTOM_ORDER_KEY = "bsky-composer-has-custom-order";
 const MAX_CHARACTERS = 300;
+const DB_NAME = "reading-sessions-db";
+const DB_VERSION = 1;
+const DB_STORE = "sessions";
+
+const normalizeRemoteSession = (row: any): SessionRecord => {
+  const created = row?.created_at ? new Date(row.created_at).getTime() : row?.id || Date.now();
+  const title = row?.game_title || row?.book_title || row?.gameTitle || "";
+  const canonical = row?.canonical_title || row?.canonicalTitle || (title || "").trim().toLowerCase().replace(/\s+[0-9]+$/i, "");
+  return {
+    id: Number(created),
+    durationMs: Number(row?.duration_ms ?? row?.durationMs ?? 0),
+    thoughts: row?.thoughts || "",
+    gameTitle: title,
+    genre: row?.genre || "",
+    canonicalTitle: canonical,
+  };
+};
 
 type NoteMeta = {
   noteId: string | number;
@@ -47,6 +67,16 @@ const formatSessionDuration = (ms: number) => {
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 };
 
+const persistLocalSessions = (sessions: SessionRecord[]) => {
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("reading-sessions", JSON.stringify(sessions));
+    }
+  } catch {
+    /* ignore */
+  }
+};
+
 export default function MainPage() {
   const { user } = useAuth();
   const [notes, setNotes] = useState<any[]>([]);
@@ -69,15 +99,182 @@ export default function MainPage() {
   const [visitorId, setVisitorId] = useState<string | null>(null);
   const [pinInfo, setPinInfo] = useState<string | null>(null);
   const [notesLoading, setNotesLoading] = useState(false);
+  const notesFetchInFlightRef = useRef(false);
   const lastStableNotesRef = useRef<any[]>([]);
   const [sessionHistory, setSessionHistory] = useState<GamingSessionSnapshot[]>([]);
+  const [editingSession, setEditingSession] = useState<GamingSessionSnapshot | null>(null);
+  const [isClient, setIsClient] = useState(false);
+  const [sessionStatus, setSessionStatus] = useState<string | null>(null);
+  const [supaEmail, setSupaEmail] = useState("");
+  const [supaPassword, setSupaPassword] = useState("");
+  const [supaAuthMessage, setSupaAuthMessage] = useState<string | null>(null);
+
+  const openSessionDb = () =>
+    new Promise<IDBDatabase>((resolve, reject) => {
+      if (typeof window === "undefined" || !("indexedDB" in window)) {
+        reject(new Error("IndexedDB not available"));
+        return;
+      }
+      const req = window.indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) {
+          db.createObjectStore(DB_STORE, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+
+  const syncSessionsEverywhere = useCallback(
+    async (sessions: SessionRecord[]) => {
+      persistLocalSessions(sessions);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("sync-sessions", { detail: sessions }));
+      }
+      try {
+        const db = await openSessionDb();
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(DB_STORE, "readwrite");
+          const store = tx.objectStore(DB_STORE);
+          const clearReq = store.clear();
+          clearReq.onerror = () => reject(clearReq.error);
+          clearReq.onsuccess = () => {
+            sessions.forEach((item) => store.put(item));
+          };
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+      } catch {
+        /* ignore IndexedDB issues */
+      }
+    },
+    []
+  );
+
+  const loadLocalSessionsDeep = useCallback(async (): Promise<SessionRecord[]> => {
+    // Try IndexedDB first
+    try {
+      const db = await openSessionDb();
+      const rows: any[] = await new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, "readonly");
+        const store = tx.objectStore(DB_STORE);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+        req.onerror = () => reject(req.error);
+      });
+      if (rows?.length) {
+        return rows.map(normalizeRemoteSession).sort((a, b) => b.id - a.id);
+      }
+    } catch {
+      /* fall through */
+    }
+    // Fallback to localStorage
+    try {
+      if (typeof window !== "undefined") {
+        const raw = window.localStorage.getItem("reading-sessions");
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) {
+          return parsed.map(normalizeRemoteSession).sort((a, b) => b.id - a.id);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return [];
+  }, []);
+
+  const signInSupabase = async () => {
+    setSupaAuthMessage(null);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: supaEmail.trim(), password: supaPassword });
+      if (error) throw error;
+      setSupaAuthMessage("Signed in to Supabase.");
+    } catch (err: any) {
+      setSupaAuthMessage(err?.message || "Failed to sign in.");
+    }
+  };
+
+  const signUpSupabase = async () => {
+    setSupaAuthMessage(null);
+    try {
+      const { error } = await supabase.auth.signUp({ email: supaEmail.trim(), password: supaPassword });
+      if (error) throw error;
+      setSupaAuthMessage("Account created. Check your email if confirmation is required.");
+    } catch (err: any) {
+      setSupaAuthMessage(err?.message || "Failed to create account.");
+    }
+  };
+
+  const updateSessionRecord = async (id: number, patch: Partial<GamingSessionSnapshot>) => {
+    setSessionHistory((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, ...patch } : s));
+      void syncSessionsEverywhere(next);
+      return next;
+    });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase
+          .from("gaming_sessions")
+          .update({
+            thoughts: patch.thoughts,
+            game_title: patch.gameTitle,
+            canonical_title: patch.gameTitle
+              ? patch.gameTitle.trim().toLowerCase().replace(/\s+[0-9]+$/i, "")
+              : patch.canonicalTitle,
+            genre: patch.genre,
+            duration_ms: patch.durationMs,
+          })
+          .eq("user_id", session.user.id)
+          .eq("created_at", new Date(id).toISOString());
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const deleteSessionRecord = async (id: number) => {
+    setSessionHistory((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      void syncSessionsEverywhere(next);
+      return next;
+    });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase.from("gaming_sessions").delete().eq("user_id", session.user.id).eq("created_at", new Date(id).toISOString());
+      }
+    } catch {
+      /* ignore */
+    }
+  };
   const hasCustomOrderRef = useRef<boolean>(false);
 
   const ensureVisitorId = () => {
     if (typeof window === "undefined") return null;
     let vid = window.localStorage.getItem(LOCAL_VISITOR_KEY);
     if (!vid) {
-      vid = crypto.randomUUID();
+      const fallback = () => {
+        try {
+          const cryptoObj: Crypto | undefined = (window as any).crypto || (window as any).msCrypto;
+          if (cryptoObj && typeof (cryptoObj as any).randomUUID === "function") {
+            return (cryptoObj as any).randomUUID();
+          }
+          if (cryptoObj?.getRandomValues) {
+            const arr = new Uint8Array(16);
+            cryptoObj.getRandomValues(arr);
+            arr[6] = (arr[6] & 0x0f) | 0x40;
+            arr[8] = (arr[8] & 0x3f) | 0x80;
+            return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+          }
+        } catch {
+          /* ignore */
+        }
+        return `vid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      };
+      vid = fallback();
       window.localStorage.setItem(LOCAL_VISITOR_KEY, vid);
     }
     setVisitorId(vid);
@@ -105,6 +302,71 @@ export default function MainPage() {
     if (typeof window === "undefined") return;
     ensureVisitorId();
   }, []);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!user) return;
+      setSessionStatus("Syncing sessions from Supabase…");
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        const { data } = await supabase
+          .from("gaming_sessions")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false })
+          .limit(500);
+        if (!data) return;
+        const remote = data.map(normalizeRemoteSession);
+        if (!active) return;
+        setSessionHistory((prev) => {
+          const seen = new Set(prev.map((p) => p.id));
+          const merged = [...prev, ...remote.filter((r) => !seen.has(r.id))].sort((a, b) => b.id - a.id);
+          void syncSessionsEverywhere(merged);
+          return merged;
+        });
+        setSessionStatus(null);
+      } catch {
+        setSessionStatus("Could not sync from Supabase.");
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [user, syncSessionsEverywhere]);
+
+  const manualRefreshSessions = async () => {
+    if (!user) {
+      setSessionStatus("Log in to sync from Supabase.");
+      return;
+    }
+    setSessionStatus("Syncing sessions from Supabase…");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        setSessionStatus("Not logged in.");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("gaming_sessions")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      const remote = (data || []).map(normalizeRemoteSession);
+      setSessionHistory(remote);
+      void syncSessionsEverywhere(remote);
+      setSessionStatus(`Pulled ${remote.length} sessions from Supabase.`);
+    } catch (err: any) {
+      setSessionStatus(err?.message || "Failed to sync from Supabase.");
+    }
+  };
 
   // Early access mode (no gift code or paywall)
 
@@ -409,63 +671,82 @@ export default function MainPage() {
     }
   };
 
-  const fetchNotes = useCallback(async () => {
-    setNotesLoading(true);
-    try {
-      if (!user) return;
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+  const fetchNotes = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (notesFetchInFlightRef.current && !opts?.force) return;
+      notesFetchInFlightRef.current = true;
+      setNotesLoading(true);
+      try {
+        if (!user) return;
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
 
-      const res = await fetch("/api/getNotes", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-
-      if (!res.ok) {
-        return;
-      }
-      const data = await res.json();
-      const local = getLocalNotes();
-
-      const applySafeNotes = (arr: any) => {
-        if (!Array.isArray(arr)) return;
-        const deduped = dedupeByContent(arr);
-        setNotes((prev: any[]) => {
-          // Avoid blanking the list while fetch is in flight; keep prior notes if new payload is empty.
-          if (!deduped.length && Array.isArray(prev) && prev.length) return prev;
-          return deduped;
+        const res = await fetch("/api/getNotes?includeMeta=true", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
         });
-      };
 
-      // For Pro, treat cloud as source of truth; use local cache only to push unsynced items once.
-      if (isPro) {
-        const filteredCloud = Array.isArray(data)
-          ? data.filter((note: any) => !deletedIds.has(String(note.id)))
-          : [];
-        const withImages = await attachImages(filteredCloud);
-        const ordered = applyOrder(withImages);
-        applySafeNotes(ordered);
+        if (!res.ok) {
+          return;
+        }
+        const data = await res.json();
+        const local = getLocalNotes();
 
-        // Push any lingering local notes, then clear the local cache so edits don't resurrect old copies.
-        if (local.length) {
-          await syncLocalNotesToCloud(data, session.access_token);
+        const applySafeNotes = (arr: any) => {
+          if (!Array.isArray(arr)) return;
+          const deduped = dedupeByContent(arr);
+          setNotes((prev: any[]) => {
+            if (!deduped.length && Array.isArray(prev) && prev.length) return prev;
+            return deduped;
+          });
+        };
+
+        const cloudNotes = Array.isArray(data?.notes) ? data.notes : Array.isArray(data) ? data : [];
+
+        if (isPro) {
+          const filteredCloud = cloudNotes.filter((note: any) => !deletedIds.has(String(note.id)));
+          const withImages = await attachImages(filteredCloud);
+          const ordered = applyOrder(withImages);
+          applySafeNotes(ordered);
+
+          if (local.length) {
+            await syncLocalNotesToCloud(cloudNotes, session.access_token);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify([]));
+              saveLocalOrder([], { custom: false });
+            }
+          }
+        } else {
+          const merged = mergeLocalAndCloud(local, cloudNotes).filter(
+            (note: any) => !deletedIds.has(String(note.id))
+          );
+          const hydrated = await attachImages(merged);
+          const ordered = applyOrder(hydrated);
+          applySafeNotes(ordered);
+        }
+
+        const metaRows = data?.meta || [];
+        if (Array.isArray(metaRows)) {
+          const map: Record<string, NoteMeta> = {};
+          for (const row of metaRows) {
+            map[String(row.note_id)] = {
+              noteId: row.note_id,
+              pinned: !!row.pinned,
+              tags: row.tags || [],
+              versions: row.versions || [],
+            };
+          }
+          setMetadata(map);
           if (typeof window !== "undefined") {
-            window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify([]));
-            saveLocalOrder([], { custom: false });
+            window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(map));
           }
         }
-        await fetchMetadata();
-      } else {
-        const merged = mergeLocalAndCloud(local, Array.isArray(data) ? data : []).filter(
-          (note: any) => !deletedIds.has(String(note.id))
-        );
-        const hydrated = await attachImages(merged);
-        const ordered = applyOrder(hydrated);
-        applySafeNotes(ordered);
+      } finally {
+        notesFetchInFlightRef.current = false;
+        setNotesLoading(false);
       }
-    } finally {
-      setNotesLoading(false);
-    }
-  }, [deletedIds, isPro, user]);
+    },
+    [applyOrder, attachImages, dedupeByContent, deletedIds, getLocalNotes, isPro, user]
+  );
 
   useEffect(() => {
     if (Array.isArray(notes) && notes.length) {
@@ -483,30 +764,7 @@ export default function MainPage() {
 
 
   const fetchMetadata = async () => {
-    if (!user || !isPro) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const res = await fetch("/api/metadata", {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const map: Record<string, NoteMeta> = {};
-      for (const row of data || []) {
-        map[String(row.note_id)] = {
-          noteId: row.note_id,
-          pinned: !!row.pinned,
-          tags: row.tags || [],
-          versions: row.versions || [],
-        };
-      }
-      setMetadata(map);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(map));
-      }
-    }
+    /* metadata now bundled in fetchNotes */
   };
 
   const deleteNote = async (id: string | number) => {
@@ -1014,7 +1272,7 @@ export default function MainPage() {
     }
   };
 
-  // Live updates: subscribe to Supabase changes for this user, plus a light polling fallback.
+  // Live updates: subscribe to Supabase changes for this user; no polling fallback.
   useEffect(() => {
     if (!user || !isPro) return;
     const channel = supabase
@@ -1033,20 +1291,83 @@ export default function MainPage() {
       )
       .subscribe();
 
-    const interval = setInterval(() => {
-      void fetchNotes();
-    }, 15000);
-
     return () => {
-      clearInterval(interval);
       void channel.unsubscribe();
     };
   }, [fetchNotes, isPro, user]);
 
-  return (
+  return !isClient ? (
+    <div className="min-h-screen bg-gray-100 text-slate-900 flex items-center justify-center px-4">
+      <div className="text-sm text-slate-700">Loading…</div>
+    </div>
+  ) : (
     <>
       <div className="min-h-screen bg-gray-100 text-slate-900 py-6">
         <div className="max-w-[1400px] mx-auto px-3 sm:px-6 space-y-8">
+          <div className="flex flex-wrap items-center gap-3 justify-end">
+            <Link
+              href="/archive"
+              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+            >
+              Archive
+            </Link>
+            <Link
+              href="/session"
+              className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+            >
+              Quick start
+            </Link>
+            <button
+              onClick={() => {
+                void fetchNotes({ force: true });
+              }}
+              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+            >
+              Sync notes now
+            </button>
+          </div>
+
+          {!user && (
+            <div className="rounded-xl border border-slate-200 bg-white/80 p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Supabase sign-in</p>
+                  <h3 className="text-lg font-semibold text-slate-900">Sign in to sync sessions</h3>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <input
+                  type="email"
+                  value={supaEmail}
+                  onChange={(e) => setSupaEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
+                />
+                <input
+                  type="password"
+                  value={supaPassword}
+                  onChange={(e) => setSupaPassword(e.target.value)}
+                  placeholder="Password"
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={signInSupabase}
+                    className="flex-1 rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    onClick={signUpSupabase}
+                    className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                  >
+                    Sign up
+                  </button>
+                </div>
+              </div>
+              {supaAuthMessage && <p className="mt-2 text-sm text-slate-700">{supaAuthMessage}</p>}
+            </div>
+          )}
           {(threadMessage || exportMessage || deleteMessage || editMessage || storageMessage) && (
             <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
               {[threadMessage, exportMessage, deleteMessage, editMessage, storageMessage]
@@ -1082,168 +1403,164 @@ export default function MainPage() {
             </div>
           )}
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="space-y-6">
-              <div className="rounded-xl border border-slate-200 bg-white/80 p-4 sm:p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Compose</p>
-                    <h3 className="text-lg font-semibold text-slate-900">Notes + posts</h3>
-                  </div>
-                  {user ? (
-                    <div className="flex items-center gap-2">
-                      <LogoutButton />
-                    </div>
-                  ) : null}
+          <div className="flex flex-col items-center gap-8">
+            <div className="w-full max-w-4xl">
+              <Composer
+                onNoteSaved={fetchNotes}
+                onLocalSave={addLocalNote}
+                user={user}
+                isPro={plan === "pro"}
+                replyTarget={null}
+                flat={false}
+              />
+            </div>
+
+            <div className="w-full max-w-5xl rounded-xl border border-slate-200 bg-white/80 overflow-hidden shadow-sm divide-y">
+              <div className="p-4 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-800">Notes & threads</h3>
                 </div>
-                <Composer
-                  onNoteSaved={fetchNotes}
-                  onLocalSave={addLocalNote}
-                  user={user}
-                  isPro={plan === "pro"}
-                  replyTarget={null}
-                  flat
-                />
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white/80 overflow-hidden shadow-sm divide-y">
-                <div className="p-4 sm:p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-800">Notes & threads</h3>
+                {pinnedCount > 0 && (
+                  <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {pinInfo || "Pinned notes stay at the top. Unpin to reorder them. Dragging is only available for unpinned notes."}
                   </div>
-                  {pinnedCount > 0 && (
-                    <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                      {pinInfo || "Pinned notes stay at the top. Unpin to reorder them. Dragging is only available for unpinned notes."}
-                    </div>
-                  )}
-                  <NotesList
-                    notes={sortedNotes}
-                    onDelete={deleteNote}
-                    onReorder={reorderNotes}
-                    onMoveRelative={moveRelative}
-                    onUpdate={updateNoteContent}
-                    onUpdateImageAlt={updateNoteImageAlt}
-                    metadata={metadata}
-                    onTogglePin={togglePin}
-                    onAddTag={addTag}
-                    onRemoveTag={removeTag}
-                    canOrganize
-                    allowThreadSelect
-                    threadSelectEnabled
-                    selectedForThread={threadSelection}
-                    onToggleThreadSelect={toggleThreadSelect}
-                    onSelectAllThreads={selectAllThreadNotes}
-                    onClearThreadSelection={clearThreadSelection}
-                    onDeleteSelectedThreads={deleteSelectedThreadNotes}
-                  />
+                )}
+                <NotesList
+                  notes={sortedNotes}
+                  onDelete={deleteNote}
+                  onReorder={reorderNotes}
+                  onMoveRelative={moveRelative}
+                  onUpdate={updateNoteContent}
+                  onUpdateImageAlt={updateNoteImageAlt}
+                  metadata={metadata}
+                  onTogglePin={togglePin}
+                  onAddTag={addTag}
+                  onRemoveTag={removeTag}
+                  canOrganize
+                  allowThreadSelect
+                  threadSelectEnabled
+                  selectedForThread={threadSelection}
+                  onToggleThreadSelect={toggleThreadSelect}
+                  onSelectAllThreads={selectAllThreadNotes}
+                  onClearThreadSelection={clearThreadSelection}
+                  onDeleteSelectedThreads={deleteSelectedThreadNotes}
+                />
 
-                  {selectedThreadNotes.length > 0 && (
-                    <div className="w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
-                        <span className="text-xs text-sky-700">
-                          Posts publish in this order (pinned stay first).
-                        </span>
-                      </div>
-                      <ol className="mt-2 space-y-1 text-sm text-sky-900">
-                        {selectedThreadNotes.map((n, idx) => (
-                          <li key={n.id} className="flex items-start gap-2">
-                            <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
-                              {idx + 1}
-                            </span>
-                            <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
-                          </li>
-                        ))}
-                      </ol>
+                {selectedThreadNotes.length > 0 && (
+                  <div className="w-full rounded border border-sky-100 bg-sky-50 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <p className="text-sm font-semibold text-sky-900">Thread order preview</p>
+                      <span className="text-xs text-sky-700">
+                        Posts publish in this order (pinned stay first).
+                      </span>
                     </div>
-                  )}
+                    <ol className="mt-2 space-y-1 text-sm text-sky-900">
+                      {selectedThreadNotes.map((n, idx) => (
+                        <li key={n.id} className="flex items-start gap-2">
+                          <span className="mt-[2px] inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-200 text-[11px] font-semibold text-sky-800">
+                            {idx + 1}
+                          </span>
+                          <span className="line-clamp-2 break-words">{n.plaintext || "(empty note)"}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
 
-                  <div className="w-full flex flex-wrap gap-3 items-start justify-between">
-                    <div className="flex flex-col gap-1 w-full sm:w-auto">
-                      <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
-                      <select
-                        value={replyControl}
-                        onChange={(e) => setReplyControl(e.target.value as any)}
-                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
-                      >
-                        <option value="anyone">Anyone can reply</option>
-                        <option value="no_replies">No replies (lock thread)</option>
-                        <option value="mentions">Only people mentioned</option>
-                        <option value="followers">Only my followers</option>
-                        <option value="following">Only people I follow</option>
-                        <option value="list">Only people on a list (enter list AT-URI)</option>
-                      </select>
-                      {replyControl === "list" && (
-                        <input
-                          value={replyListUri}
-                          onChange={(e) => setReplyListUri(e.target.value)}
-                          placeholder="at://did:example/app.bsky.graph.list/xxxx"
-                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
-                        />
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                      <button
-                        onClick={() => exportCloudNotes("json")}
-                        disabled={exporting || !user}
-                        className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                          exporting || !user ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
-                        }`}
-                      >
-                        {exporting ? "Exporting..." : "Export notes (JSON)"}
-                      </button>
-                      <button
-                        onClick={() => exportCloudNotes("md")}
-                        disabled={exporting || !user}
-                        className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                          exporting || !user ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
-                        }`}
-                      >
-                        {exporting ? "Exporting..." : "Export notes (Markdown)"}
-                      </button>
-                      <button
-                        onClick={postThreadToBluesky}
-                        disabled={postingThread || threadSelection.size === 0}
-                        className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                          postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"
-                        }`}
-                      >
-                        {postingThread ? "Posting to BlueSky..." : "Post selected to BlueSky"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          const selectedNotes = sortedNotes.filter((n) => threadSelection.has(n.id));
-                          const text = selectedNotes.map((n) => n.plaintext || "").join("\n\n---\n\n");
-                          if (!text.trim()) {
-                            setThreadMessage("Select at least one note to copy.");
-                            setTimeout(() => setThreadMessage(null), 3000);
-                            return;
-                          }
-                          void navigator.clipboard.writeText(text).then(() => {
-                            setThreadMessage("Copied selected notes for thread.");
-                            setTimeout(() => setThreadMessage(null), 3000);
-                          }).catch(() => {
-                            setThreadMessage("Failed to copy notes.");
-                            setTimeout(() => setThreadMessage(null), 3000);
-                          });
-                        }}
-                        className="px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto bg-slate-600 hover:bg-slate-700"
-                        disabled={threadSelection.size === 0}
-                      >
-                        Copy selected (thread)
-                      </button>
-                    </div>
+                <div className="w-full flex flex-wrap gap-3 items-start justify-between">
+                  <div className="flex flex-col gap-1 w-full sm:w-auto">
+                    <label className="text-xs font-semibold text-slate-700">Limit replies to thread</label>
+                    <select
+                      value={replyControl}
+                      onChange={(e) => setReplyControl(e.target.value as any)}
+                      className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm"
+                    >
+                      <option value="anyone">Anyone can reply</option>
+                      <option value="no_replies">No replies (lock thread)</option>
+                      <option value="mentions">Only people mentioned</option>
+                      <option value="followers">Only my followers</option>
+                      <option value="following">Only people I follow</option>
+                      <option value="list">Only people on a list (enter list AT-URI)</option>
+                    </select>
+                    {replyControl === "list" && (
+                      <input
+                        value={replyListUri}
+                        onChange={(e) => setReplyListUri(e.target.value)}
+                        placeholder="at://did:example/app.bsky.graph.list/xxxx"
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm"
+                      />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={() => exportCloudNotes("json")}
+                      disabled={exporting || !user}
+                      className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                        exporting || !user ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
+                      }`}
+                    >
+                      {exporting ? "Exporting..." : "Export notes (JSON)"}
+                    </button>
+                    <button
+                      onClick={() => exportCloudNotes("md")}
+                      disabled={exporting || !user}
+                      className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                        exporting || !user ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
+                      }`}
+                    >
+                      {exporting ? "Exporting..." : "Export notes (Markdown)"}
+                    </button>
+                    <button
+                      onClick={postThreadToBluesky}
+                      disabled={postingThread || threadSelection.size === 0}
+                      className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
+                        postingThread || threadSelection.size === 0 ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"
+                      }`}
+                    >
+                      {postingThread ? "Posting to BlueSky..." : "Post selected to BlueSky"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const selectedNotes = sortedNotes.filter((n) => threadSelection.has(n.id));
+                        const text = selectedNotes.map((n) => n.plaintext || "").join("\n\n---\n\n");
+                        if (!text.trim()) {
+                          setThreadMessage("Select at least one note to copy.");
+                          setTimeout(() => setThreadMessage(null), 3000);
+                          return;
+                        }
+                        void navigator.clipboard.writeText(text).then(() => {
+                          setThreadMessage("Copied selected notes for thread.");
+                          setTimeout(() => setThreadMessage(null), 3000);
+                        }).catch(() => {
+                          setThreadMessage("Failed to copy notes.");
+                          setTimeout(() => setThreadMessage(null), 3000);
+                        });
+                      }}
+                      className="px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto bg-slate-600 hover:bg-slate-700"
+                      disabled={threadSelection.size === 0}
+                    >
+                      Copy selected (thread)
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-6">
+            <div className="w-full max-w-5xl space-y-4">
               <div className="rounded-xl border border-slate-200 bg-white/80 p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Gaming sessions</p>
                     <h3 className="text-lg font-semibold text-slate-900">Capture your playthroughs</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href="/session"
+                      className="text-[11px] font-semibold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap"
+                    >
+                      Open timer page
+                    </a>
+                    <span className="text-[11px] text-slate-600 hidden sm:inline">Useful to keep open on your phone.</span>
                   </div>
                 </div>
                 <ReadingSessionCard onSessionsChange={setSessionHistory} />
@@ -1254,63 +1571,230 @@ export default function MainPage() {
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500">History</p>
                     <h3 className="text-lg font-semibold text-slate-900">Previous sessions</h3>
                   </div>
-                  <span className="text-xs text-slate-600">{sessionHistory.length} saved</span>
+                  <div className="text-xs text-slate-600 flex flex-col items-end gap-1">
+                    <span>{sessionHistory.length} saved</span>
+                    <span className="text-[11px] text-slate-500">Showing last 10; older sessions live in Archive.</span>
+                    {sessionStatus ? <span className="text-[11px] text-amber-700">{sessionStatus}</span> : null}
+                    <div className="flex flex-col sm:flex-row gap-2 mt-1 w-full sm:w-auto">
+                      <button
+                        onClick={manualRefreshSessions}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 w-full sm:w-auto"
+                      >
+                        Resync from Supabase
+                      </button>
+                      <button
+                        onClick={() => {
+                          void (async () => {
+                            const local = await loadLocalSessionsDeep();
+                            if (local.length) {
+                              setSessionHistory(local);
+                              setSessionStatus("Reloaded local history.");
+                            } else {
+                              setSessionStatus("No local sessions found.");
+                            }
+                            setTimeout(() => setSessionStatus(null), 2500);
+                          })();
+                        }}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 w-full sm:w-auto"
+                      >
+                        Reload local history
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1">Supabase sync requires app login (not just Bluesky password).</span>
+                  </div>
                 </div>
-                {sessionHistory.length === 0 ? (
+                {!isClient ? (
+                  <p className="text-sm text-slate-600">Loading history…</p>
+                ) : sessionHistory.length === 0 ? (
                   <p className="text-sm text-slate-600">No gaming sessions yet. Start one to see it here.</p>
                 ) : (
-                  <div className="grid gap-3 md:grid-cols-1">
-                    {sessionHistory.map((s) => (
-                      <div key={s.id} className="rounded-xl border border-slate-200 bg-white/70 p-3 shadow-sm">
-                        <div className="flex items-center justify-between text-xs text-slate-600">
-                          <span>{new Date(s.id).toLocaleString()}</span>
-                          <span className="font-semibold text-slate-800">{formatSessionDuration(s.durationMs)}</span>
-                        </div>
-                        <p className="mt-2 text-sm font-semibold text-slate-900 whitespace-pre-wrap break-words">
-                          {s.thoughts || "(no quote)"}
-                        </p>
-                        {s.gameTitle ? (
-                          <p className="mt-1 text-xs italic text-slate-700">— {s.gameTitle}</p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <datalist id="genre-options">
+                      {["Action", "Adventure", "RPG", "Shooter", "Strategy", "Sports", "Rogue-lite", "Indie", "Puzzle", "Simulation"].map(
+                        (g) => (
+                          <option key={g} value={g} />
+                        )
+                      )}
+                    </datalist>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {sessionHistory.slice(0, 10).map((s) => {
+                        const isEditing = editingSession?.id === s.id;
+                        const editingDurationMinutes = isEditing
+                          ? Math.max(1, Math.round((editingSession.durationMs || 0) / 60000))
+                          : Math.max(1, Math.round((s.durationMs || 0) / 60000));
+                        return (
+                          <div key={s.id} className="rounded-xl border border-slate-200 bg-white/70 p-3 shadow-sm space-y-2">
+                            <div className="flex items-center justify-between text-xs text-slate-600 gap-2">
+                              <span>{new Date(s.id).toLocaleString()}</span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setEditingSession(isEditing ? null : { ...s })}
+                                  className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900"
+                                >
+                                  {isEditing ? "Cancel" : "Edit"}
+                                </button>
+                                <button
+                                  onClick={() => deleteSessionRecord(s.id)}
+                                  className="text-[11px] font-semibold text-rose-600 hover:text-rose-700"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <label className="flex flex-col gap-1">
+                                  <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Duration (minutes)</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={editingDurationMinutes}
+                                    onChange={(e) =>
+                                      setEditingSession((prev) =>
+                                        prev && prev.id === s.id ? { ...prev, durationMs: Math.max(1, Number(e.target.value || 0)) * 60000 } : prev
+                                      )
+                                    }
+                                    className="w-full rounded border border-slate-300 px-2 py-1 text-sm text-slate-800"
+                                  />
+                                </label>
+
+                                <label className="flex flex-col gap-1">
+                                  <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Game title</span>
+                                  <input
+                                    value={editingSession?.gameTitle ?? s.gameTitle}
+                                    onChange={(e) =>
+                                      setEditingSession((prev) => (prev && prev.id === s.id ? { ...prev, gameTitle: e.target.value } : prev))
+                                    }
+                                    className="w-full rounded border border-slate-300 px-2 py-1 text-sm text-slate-800"
+                                    placeholder="Hades, Baldur's Gate 3…"
+                                  />
+                                </label>
+
+                                <label className="flex flex-col gap-1">
+                                  <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Genre (required)</span>
+                                  <input
+                                    list="genre-options"
+                                    value={editingSession?.genre ?? s.genre}
+                                    onChange={(e) =>
+                                      setEditingSession((prev) => (prev && prev.id === s.id ? { ...prev, genre: e.target.value } : prev))
+                                    }
+                                    className="w-full rounded border border-slate-300 px-2 py-1 text-sm text-slate-800"
+                                    placeholder="Action, RPG…"
+                                  />
+                                </label>
+
+                                <label className="flex flex-col gap-1">
+                                  <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Quote / thoughts</span>
+                                  <textarea
+                                    value={editingSession?.thoughts ?? s.thoughts}
+                                    onChange={(e) =>
+                                      setEditingSession((prev) => (prev && prev.id === s.id ? { ...prev, thoughts: e.target.value } : prev))
+                                    }
+                                    className="w-full rounded border border-slate-300 px-2 py-1 text-sm text-slate-800"
+                                    rows={3}
+                                  />
+                                </label>
+
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => {
+                                      const draft = editingSession;
+                                      if (!draft?.genre?.trim()) {
+                                        setEditMessage("Genre is required.");
+                                        setTimeout(() => setEditMessage(null), 2500);
+                                        return;
+                                      }
+                                      void updateSessionRecord(s.id, {
+                                        thoughts: draft.thoughts ?? s.thoughts,
+                                        gameTitle: draft.gameTitle ?? s.gameTitle,
+                                        genre: draft.genre ?? s.genre,
+                                        durationMs: draft.durationMs ?? s.durationMs,
+                                        canonicalTitle: (draft.gameTitle ?? s.gameTitle ?? "").trim().toLowerCase().replace(/\s+[0-9]+$/i, ""),
+                                      });
+                                      setEditingSession(null);
+                                      setEditMessage("Session updated.");
+                                      setTimeout(() => setEditMessage(null), 2000);
+                                    }}
+                                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-800"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingSession(null)}
+                                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-xs text-slate-600">
+                                  <span className="font-semibold text-slate-800">{formatSessionDuration(s.durationMs)}</span>
+                                  <span className="text-[11px] font-semibold text-slate-700">{s.genre || "Genre not set"}</span>
+                                </div>
+                                <p className="text-sm font-semibold text-slate-900 whitespace-pre-wrap break-words">
+                                  {s.thoughts || "(no quote)"}
+                                </p>
+                                {s.gameTitle ? (
+                                  <p className="text-xs italic text-slate-700">— {s.gameTitle}</p>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
-          </div>
 
-          <div className="grid gap-4 md:grid-cols-2 bg-white/80 border border-slate-200 rounded-xl overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-200 p-6">
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">About</p>
-              <h3 className="text-xl font-semibold text-slate-900">BlueSky Composer for gamers who write</h3>
-              <p className="text-sm text-slate-700">
-                Keep your game-day thoughts, build threads, and share recaps without leaving the app. Capture quotes from sessions,
-                draft long posts, and push finished takes straight to BlueSky.
-              </p>
-              <ul className="list-disc list-inside text-sm text-slate-700 space-y-1">
-                <li>Notes + threads that stay organized for big posts.</li>
-                <li>Gaming sessions with exports you can share to BlueSky.</li>
-                <li>Local-first storage so your drafts and sessions stay with you.</li>
-              </ul>
+            <div className="w-full max-w-5xl rounded-xl border border-slate-200 bg-white/80 p-4 sm:p-6 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Analytics</p>
+                  <h3 className="text-lg font-semibold text-slate-900">Gaming overview</h3>
+                </div>
+              </div>
+              <GamingAnalytics sessions={isClient ? sessionHistory : []} />
             </div>
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">App password</p>
-              <h3 className="text-xl font-semibold text-slate-900">You need a BlueSky app password</h3>
-              <p className="text-sm text-slate-700">
-                Bluesky requires an app-specific password to post via third-party tools. Generate one in Bluesky settings
-                (Privacy & Security → App Passwords), then paste your handle and app password into the composer.
-              </p>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
-                <p className="font-semibold text-slate-900">Why?</p>
-                <p className="text-slate-700">
-                  App passwords keep your main login safe. We store them locally in your browser; nothing leaves your device unless
-                  you choose to post.
+
+            <GameReviewSection />
+
+            <div className="w-full max-w-5xl rounded-xl border border-slate-200 bg-white/80 overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-200 p-6 md:grid md:grid-cols-2 md:gap-4">
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">About</p>
+                <h3 className="text-xl font-semibold text-slate-900">BlueSky Composer for gamers who write</h3>
+                <p className="text-sm text-slate-700">
+                  Keep your game-day thoughts, build threads, and share recaps without leaving the app. Capture quotes from sessions,
+                  draft long posts, and push finished takes straight to BlueSky.
+                </p>
+                <ul className="list-disc list-inside text-sm text-slate-700 space-y-1">
+                  <li>Notes + threads that stay organized for big posts.</li>
+                  <li>Gaming sessions with exports you can share to BlueSky.</li>
+                  <li>Local-first storage so your drafts and sessions stay with you.</li>
+                </ul>
+              </div>
+              <div className="space-y-3 mt-4 md:mt-0 md:pl-6">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">App password</p>
+                <h3 className="text-xl font-semibold text-slate-900">You need a BlueSky app password</h3>
+                <p className="text-sm text-slate-700">
+                  Bluesky requires an app-specific password to post via third-party tools. Generate one in Bluesky settings
+                  (Privacy & Security → App Passwords), then paste your handle and app password into the composer.
+                </p>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                  <p className="font-semibold text-slate-900">Why?</p>
+                  <p className="text-slate-700">
+                    App passwords keep your main login safe. We store them locally in your browser; nothing leaves your device unless
+                    you choose to post.
+                  </p>
+                </div>
+                <p className="text-sm text-slate-700">
+                  Ready? Add your handle and app password in the composer, start writing, and ship faster.
                 </p>
               </div>
-              <p className="text-sm text-slate-700">
-                Ready? Add your handle and app password in the composer, start writing, and ship faster.
-              </p>
             </div>
           </div>
         </div>

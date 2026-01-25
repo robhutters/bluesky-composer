@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 export type SessionRecord = {
   id: number;
   durationMs: number;
   thoughts: string;
   gameTitle: string;
+  genre: string;
+  canonicalTitle?: string;
 };
 
 const THOUGHT_LIMIT = 240;
@@ -34,12 +37,15 @@ export default function ReadingSessionCard({ onSessionsChange }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [thoughts, setThoughts] = useState("");
   const [gameTitle, setGameTitle] = useState("");
+  const [genre, setGenre] = useState("");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [exporting, setExporting] = useState(false);
   const [postMessage, setPostMessage] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [backgroundSrc, setBackgroundSrc] = useState<string | null>(null);
   const [showSessionTime, setShowSessionTime] = useState(true);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [pageVisible, setPageVisible] = useState(true);
 
   const isBrowser = typeof window !== "undefined";
 
@@ -60,12 +66,24 @@ export default function ReadingSessionCard({ onSessionsChange }: Props) {
       req.onerror = () => reject(req.error);
     });
 
-  const normalizeSession = (s: any): SessionRecord => ({
-    id: Number(s.id),
-    durationMs: Number(s.durationMs) || 0,
-    thoughts: s.thoughts || "",
-    gameTitle: s.gameTitle ?? s.bookTitle ?? "",
-  });
+  const normalizeTitle = (title: string) => {
+    const trimmed = (title || "").trim();
+    const noTrailingNumber = trimmed.replace(/\s+[0-9]+$/i, "");
+    return noTrailingNumber.toLowerCase();
+  };
+
+  const normalizeSession = (s: any): SessionRecord => {
+    const rawTitle = s.gameTitle ?? s.bookTitle ?? "";
+    const canonical = s.canonicalTitle || s.canonical_title || normalizeTitle(rawTitle);
+    return {
+      id: Number(s.id),
+      durationMs: Number(s.durationMs) || 0,
+      thoughts: s.thoughts || "",
+      gameTitle: rawTitle,
+      genre: s.genre || "",
+      canonicalTitle: canonical,
+    };
+  };
 
   const loadSessionsFromDb = async (): Promise<SessionRecord[]> => {
     const db = await openDb();
@@ -166,6 +184,78 @@ export default function ReadingSessionCard({ onSessionsChange }: Props) {
   }, [sessions, onSessionsChange]);
 
   useEffect(() => {
+    const handler = () => setPageVisible(!document.hidden);
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handler);
+    }
+    return () => {
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handler);
+      }
+    };
+  }, []);
+
+  // Poll Supabase active session to keep in sync across devices
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    const poll = async () => {
+      if (!pageVisible) return;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        const { data, error } = await supabase
+          .from("active_sessions")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .limit(1);
+        if (error) return;
+        const active = data?.[0];
+        if (!active) {
+          if (sessionActive) {
+            setSessionActive(false);
+            setStartTime(null);
+            setElapsed(0);
+          }
+          return;
+        }
+        const startedAt = active.started_at ? new Date(active.started_at).getTime() : Date.now();
+        const isSameSession = startTime && Math.abs(startTime - startedAt) < 2000;
+        if (!sessionActive || !isSameSession) {
+          setSessionActive(true);
+          setStartTime(startedAt);
+          setElapsed(Date.now() - startedAt);
+          setGenre(active.genre || "");
+          setGameTitle(active.game_title || "");
+          setThoughts(active.thoughts || "");
+        } else {
+          setElapsed(Date.now() - startedAt);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    interval = setInterval(poll, 5000);
+    void poll();
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [sessionActive]);
+
+  useEffect(() => {
+    if (!isBrowser) return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<SessionRecord[]>).detail;
+      if (Array.isArray(detail)) {
+        const normalized = detail.map((r) => normalizeSession(r)).sort((a, b) => b.id - a.id);
+        // Defer to avoid setState during render cycles from upstream dispatch
+        setTimeout(() => setSessions(normalized), 0);
+      }
+    };
+    window.addEventListener("sync-sessions", handler as EventListener);
+    return () => window.removeEventListener("sync-sessions", handler as EventListener);
+  }, [isBrowser]);
+
+  useEffect(() => {
     if (!sessionActive || !startTime) return;
     const t = setInterval(() => setElapsed(Date.now() - startTime), 300);
     return () => clearInterval(t);
@@ -179,18 +269,68 @@ export default function ReadingSessionCard({ onSessionsChange }: Props) {
     setElapsed(0);
     setThoughts("");
     setGameTitle("");
+    setGenre("");
+    // Sync active session to Supabase (best effort)
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const started = new Date().toISOString();
+          const { error } = await supabase.from("active_sessions").upsert(
+            {
+              user_id: session.user.id,
+              started_at: started,
+              game_title: "",
+              genre: "",
+              thoughts: "",
+            },
+            { onConflict: "user_id" }
+          );
+          if (error) throw error;
+          setSyncMessage("Active session synced.");
+        } else {
+          setSyncMessage("Not signed in to Supabase; active session is local.");
+        }
+      } catch (err: any) {
+        setSyncMessage(err?.message || "Could not sync active session.");
+      } finally {
+        setTimeout(() => setSyncMessage(null), 2500);
+      }
+    })();
   };
 
-  const endSession = () => {
+  const endSession = async () => {
     if (!startTime) return;
     const durationMs = Date.now() - startTime;
+    if (!genre || !gameTitle.trim()) return;
+    const canonicalTitle = gameTitle ? normalizeTitle(gameTitle) : "";
     const record: SessionRecord = {
       id: Date.now(),
       durationMs,
       thoughts,
       gameTitle,
+      genre,
+      canonicalTitle,
     };
     setSessions((prev) => [record, ...prev]);
+    // sync to supabase if logged in
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase.from("active_sessions").delete().eq("user_id", session.user.id);
+        await supabase.from("gaming_sessions").insert({
+          user_id: session.user.id,
+          duration_ms: durationMs,
+          thoughts,
+          game_title: gameTitle,
+          canonical_title: canonicalTitle,
+          genre,
+          created_at: new Date(record.id).toISOString(),
+        });
+      }
+    } catch {
+      /* ignore sync errors */
+    }
     setSessionActive(false);
     setStartTime(null);
     setElapsed(0);
@@ -206,8 +346,8 @@ export default function ReadingSessionCard({ onSessionsChange }: Props) {
     });
 
   const drawCard = async (session: SessionRecord) => {
-    const width = 900;
-    const height = 1600;
+    const width = 720;
+    const height = 1280;
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -286,7 +426,7 @@ export default function ReadingSessionCard({ onSessionsChange }: Props) {
       ctx.fillText(timeText, width - 40, height - 40);
     }
 
-    return canvas.toDataURL("image/png");
+    return canvas.toDataURL("image/jpeg", 0.78);
   };
 
   const postToBluesky = async () => {
@@ -380,6 +520,7 @@ export default function ReadingSessionCard({ onSessionsChange }: Props) {
           {sessionActive ? "End session" : "Start session"}
         </button>
       </div>
+      {syncMessage && <div className="mb-2 text-[11px] text-slate-700 text-right">{syncMessage}</div>}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-3">
@@ -407,15 +548,49 @@ export default function ReadingSessionCard({ onSessionsChange }: Props) {
           </label>
           <label className="block text-sm text-slate-800">
             Game title (optional)
-            <input
+            <div className="mt-2 flex gap-2">
+              <input
+                className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 ${
+                  sessionActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+                }`}
+                placeholder="e.g. Elden Ring"
+                value={gameTitle}
+                onChange={(e) => setGameTitle(e.target.value)}
+                disabled={!sessionActive}
+                list="known-games"
+              />
+              <datalist id="known-games">
+                {Array.from(new Set(sessions.map((s) => s.gameTitle).filter(Boolean))).map((title) => (
+                  <option key={title} value={title} />
+                ))}
+              </datalist>
+            </div>
+          </label>
+          <label className="block text-sm text-slate-800">
+            Genre (required)
+            <select
               className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm text-slate-900 ${
                 sessionActive ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
               }`}
-              placeholder="e.g. Elden Ring"
-              value={gameTitle}
-              onChange={(e) => setGameTitle(e.target.value)}
+              value={genre}
+              onChange={(e) => setGenre(e.target.value)}
               disabled={!sessionActive}
-            />
+            >
+              <option value="">Select genre</option>
+              <option value="Action">Action</option>
+              <option value="Adventure">Adventure</option>
+              <option value="RPG">RPG</option>
+              <option value="Strategy">Strategy</option>
+              <option value="Shooter">Shooter</option>
+              <option value="Sports">Sports</option>
+              <option value="Racing">Racing</option>
+              <option value="Puzzle">Puzzle</option>
+              <option value="Simulation">Simulation</option>
+              <option value="Horror">Horror</option>
+              <option value="Platformer">Platformer</option>
+              <option value="Indie">Indie</option>
+              <option value="Other">Other</option>
+            </select>
           </label>
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
             <div className="flex items-center justify-between">
