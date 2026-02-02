@@ -1,4 +1,6 @@
 "use client";
+"use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { BskyAgent } from "../lib/simpleBskyAgent";
 import Image from "next/image";

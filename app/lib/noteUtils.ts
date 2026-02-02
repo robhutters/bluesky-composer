@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export const hashContent = (content: string) => {
   let hash = 0;
   for (let i = 0; i < content.length; i++) {

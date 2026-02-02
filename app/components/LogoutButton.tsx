@@ -5,7 +5,7 @@ export default function LogoutButton() {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut({ scope: "global" });
-    } catch (e) {
+    } catch {
       // ignore
     }
     // Hard clear Supabase auth entries from localStorage to prevent auto re-login

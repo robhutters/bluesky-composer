@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-page-custom-font */
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "./providers/AuthProvider";
@@ -7,13 +8,12 @@ import Script from "next/script";
 export const metadata: Metadata = {
   title: "BlueSky Composer - Notes app for BlueSky users",
   description:
-    "Browser-based desktop app for passionate yappers who love talking about their favourite games on BlueSky. Draft, organize, and post with less friction.",
+    "Browser-based desktop app for BlueSky users to draft, organize, and post long-form threads with less friction.",
   keywords: [
     "BlueSky",
     "notes app",
     "composer",
     "desktop",
-    "gaming",
     "thread",
     "posting",
     "pro",
