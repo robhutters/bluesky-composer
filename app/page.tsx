@@ -82,8 +82,9 @@ export default function MainPage() {
         }
         return `vid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       };
-      vid = fallback();
-      window.localStorage.setItem(LOCAL_VISITOR_KEY, vid);
+      const generatedVid = fallback();
+      vid = generatedVid;
+      window.localStorage.setItem(LOCAL_VISITOR_KEY, generatedVid);
     }
     setVisitorId(vid);
     return vid;
