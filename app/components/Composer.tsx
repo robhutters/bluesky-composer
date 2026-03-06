@@ -1,40 +1,26 @@
 "use client";
-"use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
 import { dataUrlSizeBytes } from "../lib/imageUtils";
 
 const MAX_CHARACTERS = 300;
 const LOCAL_DRAFT_KEY = "bsky-composer-draft";
-const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
-const ACTIVITY_PING_INTERVAL_MS = 30000;
 const EMOJIS = ["😀", "😅", "🥳", "🥹", "😄", "😋", "😂", "🤣", "🥲", "☺️", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😙", "😝", "😜", "🤨", "🧐", "🤓", "😎", "🤩", "😏", "😒", "😞", "😔", "😟", "😕", "😭", "🙁", "🥺", "😫", "😤", "😠", "😡", "🤬", "🥵", "😳", "🔥", "✨", "👍", "💡", "📌", "🧠", "🍕", "☕️", "✅", "💬", "🎮", "🕹️", "🧭", "👀", "🐈" , "🐈‍⬛" , "👇", "👎" , "🖕", "👉" , "🤌" ];
 
 export default function Composer({
-  onNoteSaved,
   onLocalSave,
-  user,
-  isPro,
   replyTarget,
   flat = false,
 }: {
-  onNoteSaved: () => void;
   onLocalSave: (content: string, images?: { data: string; alt: string }[]) => void;
-  user: any;
-  isPro: boolean;
   replyTarget?: { uri: string; cid: string } | null;
   flat?: boolean;
 }) {
   const [text, setText] = useState("");
-  const [loading, setLoading] = useState(false);
   const [hasAutoSaved, setHasAutoSaved] = useState(false);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
-  const [visitorId, setVisitorId] = useState<string | null>(null);
-  const lastPingRef = useRef<number>(0);
-  const lastSavePingRef = useRef<number>(0);
   const [images, setImages] = useState<{ data: string; name: string; alt: string; width?: number; height?: number }[]>([]);
   const [video, setVideo] = useState<{
     data?: string;
@@ -93,12 +79,6 @@ export default function Composer({
     try {
       const stored = window.localStorage.getItem(LOCAL_DRAFT_KEY);
       if (stored) setText(sanitizePlainText(stored));
-      let vid = window.localStorage.getItem(LOCAL_VISITOR_KEY);
-      if (!vid) {
-        vid = crypto.randomUUID();
-        window.localStorage.setItem(LOCAL_VISITOR_KEY, vid);
-      }
-      setVisitorId(vid);
       const storedHandle = window.localStorage.getItem("bsky-handle");
       const storedPass = window.localStorage.getItem("bsky-app-password");
       if (storedHandle) setBskyHandle(storedHandle);
@@ -174,7 +154,6 @@ export default function Composer({
         setText(firstPart);
 
         autoSave(firstPart).then(() => {
-          onNoteSaved();
           setText(remainder);
           setHasAutoSaved(false);
         });
@@ -183,23 +162,6 @@ export default function Composer({
       }
     } else {
       setText(value);
-    }
-
-    const now = Date.now();
-    if (
-      visitorId &&
-      now - lastPingRef.current > ACTIVITY_PING_INTERVAL_MS &&
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    ) {
-      lastPingRef.current = now;
-      void fetch("/api/track-activity", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: visitorId }),
-      }).catch(() => {
-        /* ignore */ 
-      });
     }
   };
 
@@ -220,135 +182,25 @@ export default function Composer({
     requestAnimationFrame(() => textAreaRef.current?.focus());
   };
 
-  const autoSave = async (partialText: string) => {
-    if (!partialText) return;
+  const autoSave = (partialText: string) => {
+    if (!partialText) return Promise.resolve();
     const safe = sanitizePlainText(partialText);
-    if (!safe) return;
-    const canUseCloud = user && isPro;
-    // Always keep a local copy
-    onLocalSave(
-      safe,
-      images.map((img) => ({ data: img.data, alt: img.alt }))
-    );
-    if (visitorId) {
-      const now = Date.now();
-      if (
-        now - lastSavePingRef.current > 5000 &&
-        process.env.NEXT_PUBLIC_SUPABASE_URL &&
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      ) {
-        lastSavePingRef.current = now;
-        void fetch("/api/track-save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId: visitorId, kind: canUseCloud ? "cloud" : "local" }),
-        }).catch(() => {
-          /* ignore */
-        });
-      }
-    }
-    if (!canUseCloud) return;
-    setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not logged in");
-
-      const res = await fetch("/api/saveNote", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-          body: JSON.stringify({ content: safe }),
-      });
-      setLoading(false);
-
-      if (res.ok) {
-        setFlashMessage("Note auto-saved ✔️");
-        setTimeout(() => setFlashMessage(null), 5000);
-      }
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to auto-save note");
-      }
-    } catch (err: any) {
-      setFlashMessage(`Error auto-saving: ${err.message ?? "Unknown error"}`);
-      setTimeout(() => setFlashMessage(null), 5000);
-    } finally {
-      setLoading(false);
-    }
+    if (!safe) return Promise.resolve();
+    onLocalSave(safe, images.map((img) => ({ data: img.data, alt: img.alt })));
+    return Promise.resolve();
   };
 
-  const saveNote = async () => {
+  const saveNote = () => {
     const safe = sanitizePlainText(text);
     if (!safe) return;
-    setLoading(true);
-    try {
-      const canUseCloud = user && isPro;
-      // Always save locally
-      onLocalSave(
-        safe,
-        images.map((img) => ({ data: img.data, alt: img.alt }))
-      );
-      if (visitorId) {
-        const now = Date.now();
-        if (
-          now - lastSavePingRef.current > 5000 &&
-          process.env.NEXT_PUBLIC_SUPABASE_URL &&
-          process.env.SUPABASE_SERVICE_ROLE_KEY
-        ) {
-          lastSavePingRef.current = now;
-          void fetch("/api/track-save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ clientId: visitorId, kind: canUseCloud ? "cloud" : "local" }),
-          }).catch(() => {
-            /* ignore */
-          });
-        }
-      }
-
-      if (canUseCloud) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error("Not logged in");
-
-        const res = await fetch("/api/saveNote", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ content: safe }),
-        });
-        setLoading(false);
-
-        if (res.ok) {
-          setFlashMessage("Note saved ✔️");
-          setTimeout(() => setFlashMessage(null), 3000);
-          onNoteSaved(); // refresh remote list
-        }
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || "Failed to save note");
-        }
-      } else {
-        setFlashMessage("Note saved locally ✔️");
-        setTimeout(() => setFlashMessage(null), 3000);
-      }
-      setText("");
-      setImages([]);
-      setVideo(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      if (videoInputRef.current) {
-        videoInputRef.current.value = "";
-      }
-    } catch (err: any) {
-      alert(`Error saving note: ${err.message ?? "Unknown error"}`);
-    } finally {
-      setLoading(false);
-    }
+    onLocalSave(safe, images.map((img) => ({ data: img.data, alt: img.alt })));
+    setFlashMessage("Note saved ✔️");
+    setTimeout(() => setFlashMessage(null), 3000);
+    setText("");
+    setImages([]);
+    setVideo(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (videoInputRef.current) videoInputRef.current.value = "";
   };
 
   const checkBskyAvailability = async () => {
@@ -931,8 +783,7 @@ export default function Composer({
         )}
 
         <p className="text-[11px] text-gray-500">
-          Images/videos stay on this device until you publish. When you post to BlueSky we upload the media straight to their API and only keep an
-          encrypted copy of your text for sync.
+          Images/videos stay on this device until you publish. When you post to Bluesky we upload the media straight to their API.
         </p>
       </div>
 
@@ -997,14 +848,14 @@ export default function Composer({
           </button>
           <button
             onClick={saveNote}
-            disabled={text.length === 0 || loading}
+            disabled={text.length === 0}
             className={`px-4 py-2 rounded-md text-white text-sm font-semibold transition ${
-              text.length === 0 || loading
+              text.length === 0
                 ? "bg-blue-400 cursor-not-allowed opacity-50"
                 : "bg-blue-600 hover:bg-blue-700"
             }`}
           >
-            {loading ? "Saving..." : "Save note"}
+            Save note
           </button>
         </div>
       </div>

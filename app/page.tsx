@@ -2,18 +2,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "./lib/supabaseClient";
-import { contentKey, mergeLocalAndCloud, formatNotesToMarkdown, canExportNotes, sortWithPins } from "./lib/noteUtils";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { contentKey, formatNotesToMarkdown, sortWithPins } from "./lib/noteUtils";
 import Composer from "./components/Composer";
 import NotesList from "./components/NotesList";
 import { FloatingProfile } from "./components/FloatingProfile";
-import { useAuth } from "./providers/AuthProvider";
 import { loadImagesForKey, saveImagesForKey, deleteImagesForKey } from "./lib/indexedImages";
 
 const LOCAL_NOTES_KEY = "bsky-composer-notes";
 const LOCAL_NOTE_META_KEY = "bsky-composer-note-meta";
-const LOCAL_VISITOR_KEY = "bsky-composer-visitor";
 const LOCAL_IMAGE_MAP_KEY = "bsky-composer-note-images";
 const LOCAL_ORDER_KEY = "bsky-composer-note-order";
 const LOCAL_HAS_CUSTOM_ORDER_KEY = "bsky-composer-has-custom-order";
@@ -34,13 +31,8 @@ const sortOldestFirst = (list: any[]) => {
 };
 
 export default function MainPage() {
-  const { user } = useAuth();
   const [notes, setNotes] = useState<any[]>([]);
-  const [plan, setPlan] = useState<string | null>(null);
-  const isPro = plan === "pro";
-  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, NoteMeta>>({});
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exporting, setExporting] = useState<boolean>(false);
   const [threadSelection, setThreadSelection] = useState<Set<string | number>>(new Set());
@@ -51,94 +43,26 @@ export default function MainPage() {
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [editMessage, setEditMessage] = useState<string | null>(null);
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
-  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
-  const [visitorId, setVisitorId] = useState<string | null>(null);
   const [pinInfo, setPinInfo] = useState<string | null>(null);
-  const [notesLoading, setNotesLoading] = useState(false);
-  const notesFetchInFlightRef = useRef(false);
-  const lastStableNotesRef = useRef<any[]>([]);
   const [isClient, setIsClient] = useState(false);
   const hasCustomOrderRef = useRef<boolean>(false);
-
-  const ensureVisitorId = () => {
-    if (typeof window === "undefined") return null;
-    let vid = window.localStorage.getItem(LOCAL_VISITOR_KEY);
-    if (!vid) {
-      const fallback = () => {
-        try {
-          const cryptoObj: Crypto | undefined = (window as any).crypto || (window as any).msCrypto;
-          if (cryptoObj && typeof (cryptoObj as any).randomUUID === "function") {
-            return (cryptoObj as any).randomUUID();
-          }
-          if (cryptoObj?.getRandomValues) {
-            const arr = new Uint8Array(16);
-            cryptoObj.getRandomValues(arr);
-            arr[6] = (arr[6] & 0x0f) | 0x40;
-            arr[8] = (arr[8] & 0x3f) | 0x80;
-            return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
-          }
-        } catch {
-          /* ignore */
-        }
-        return `vid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      };
-      const generatedVid = fallback();
-      vid = generatedVid;
-      window.localStorage.setItem(LOCAL_VISITOR_KEY, generatedVid);
-    }
-    setVisitorId(vid);
-    return vid;
-  };
-
-
-  useEffect(() => {
-    if (!user || typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const upgrade = params.get("upgrade");
-    if (upgrade === "success") {
-      setUpgradeMessage("Pro unlocked! Cloud sync is now available.");
-      void fetchPlanAndNotes();
-    }
-    if (upgrade) {
-      params.delete("upgrade");
-      const query = params.toString();
-      const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
-      window.history.replaceState({}, "", nextUrl);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    ensureVisitorId();
-  }, []);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Early access mode (no gift code or paywall)
-
   useEffect(() => {
-    if (!user) {
-      setPlan(null);
-      loadLocalNotes();
-      loadLocalMetadata();
-      return;
-    }
-    void fetchPlanAndNotes();
-  }, [user]);
+    loadLocalNotes();
+    loadLocalMetadata();
+  }, []);
 
   const getLocalNotes = (): any[] => {
     if (typeof window === "undefined") return [];
     try {
       const raw = window.localStorage.getItem(LOCAL_NOTES_KEY);
-      if (!raw) {
-        return [];
-      }
+      if (!raw) return [];
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
+      if (Array.isArray(parsed)) return parsed;
     } catch {
       return [];
     }
@@ -167,9 +91,8 @@ export default function MainPage() {
       return;
     }
     const isCustom = options?.custom ?? hasCustomOrderRef.current;
-    const flagValue = isCustom ? "true" : "false";
     window.localStorage.setItem(LOCAL_ORDER_KEY, JSON.stringify(ids.map(String)));
-    window.localStorage.setItem(LOCAL_HAS_CUSTOM_ORDER_KEY, flagValue);
+    window.localStorage.setItem(LOCAL_HAS_CUSTOM_ORDER_KEY, isCustom ? "true" : "false");
     hasCustomOrderRef.current = isCustom;
   };
 
@@ -182,13 +105,6 @@ export default function MainPage() {
     } catch {
       return {};
     }
-  };
-
-  const saveImageForContent = (plaintext: string, imageData?: string | null) => {
-    if (!imageData || typeof window === "undefined") return;
-    const map = getLocalImages();
-    map[contentKey(plaintext)] = imageData;
-    window.localStorage.setItem(LOCAL_IMAGE_MAP_KEY, JSON.stringify(map));
   };
 
   const removeImageForContent = (plaintext?: string) => {
@@ -216,9 +132,7 @@ export default function MainPage() {
   const loadLocalNotes = async () => {
     const local = getLocalNotes();
     const safeLocal = Array.isArray(local) ? local : [];
-    // Optimistically render what's already in localStorage so the list doesn't vanish
     setNotes(applyOrder(safeLocal));
-    // Hydrate images from IndexedDB in the background
     const withImages = await Promise.all(
       safeLocal.map(async (note) => {
         try {
@@ -228,7 +142,7 @@ export default function MainPage() {
             return { ...note, images: imgs, imageData: imgs[0]?.data || note.imageData || null };
           }
         } catch {
-          /* ignore and fall back */
+          /* ignore */
         }
         return note;
       })
@@ -240,14 +154,9 @@ export default function MainPage() {
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(LOCAL_NOTE_META_KEY);
-      if (!raw) {
-        setMetadata({});
-        return;
-      }
+      if (!raw) { setMetadata({}); return; }
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        setMetadata(parsed);
-      }
+      if (parsed && typeof parsed === "object") setMetadata(parsed);
     } catch {
       setMetadata({});
     }
@@ -281,7 +190,7 @@ export default function MainPage() {
   const addLocalNote = (content: string, images?: { data: string; alt: string }[]) => {
     if (!content) return;
     const key = contentKey(content);
-    setNotes((prev) => {
+    setNotes((prev: any[]) => {
       const base = Array.isArray(prev) ? prev : [];
       const existingIdx = base.findIndex((n: any) => contentKey(n.plaintext) === key);
       const now = Date.now();
@@ -320,26 +229,8 @@ export default function MainPage() {
       }
     });
     if (images?.length) {
-      const keyStr = contentKey(content);
-      void saveImagesForKey(keyStr, images.slice(0, 4));
+      void saveImagesForKey(contentKey(content), images.slice(0, 4));
     }
-  };
-
-  const attachImages = async (arr: any[]) => {
-    return Promise.all(
-      (arr || []).map(async (note: any) => {
-        try {
-          const key = contentKey(note.plaintext || "");
-          const imgs = await loadImagesForKey(key);
-          if (imgs?.length) {
-            return { ...note, images: imgs, imageData: imgs[0]?.data || note.imageData || null };
-          }
-        } catch {
-          /* ignore */
-        }
-        return note;
-      })
-    );
   };
 
   const applyOrder = (arr: any[]) => {
@@ -358,158 +249,21 @@ export default function MainPage() {
     return sortOldestFirst(safe);
   };
 
-  const fetchPlanAndNotes = async () => {
-    if (!user) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    loadLocalMetadata();
-
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("plan")
-      .eq("id", session.user.id)
-      .single();
-
-    let userPlan = profile?.plan ?? "free";
-
-    // If the profile row is missing, create it client-side (allowed by RLS) so the webhook can update it later.
-    if (error && (error as any)?.code === "PGRST116") {
-      const { error: insertError } = await supabase.from("profiles").upsert({
-        id: session.user.id,
-        email: session.user.email,
-        plan: "free",
-      });
-      if (insertError) {
-        console.error("Failed to create profile row", insertError);
+  const deleteNote = (id: string | number) => {
+    setNotes((prev: any[]) => {
+      const target = prev.find((n) => String(n.id) === String(id));
+      if (target?.plaintext) {
+        removeImageForContent(target.plaintext);
+        void deleteImagesForKey(contentKey(target.plaintext)).catch(() => {});
       }
-      userPlan = "free";
-    } else if (error) {
-      console.error("Error loading plan", error);
-    }
-
-    setPlan(userPlan);
-
-    if (userPlan === "pro") {
-      await fetchNotes();
-    } else {
-      loadLocalNotes();
-    }
-  };
-
-  const fetchNotes = useCallback(
-    async (opts?: { force?: boolean }) => {
-      if (notesFetchInFlightRef.current && !opts?.force) return;
-      notesFetchInFlightRef.current = true;
-      setNotesLoading(true);
-      try {
-        if (!user) return;
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const res = await fetch("/api/getNotes?includeMeta=true", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-
-        if (!res.ok) {
-          return;
-        }
-        const data = await res.json();
-        const local = getLocalNotes();
-
-        const applySafeNotes = (arr: any) => {
-          if (!Array.isArray(arr)) return;
-          const deduped = dedupeByContent(arr);
-          setNotes((prev: any[]) => {
-            if (!deduped.length && Array.isArray(prev) && prev.length) return prev;
-            return deduped;
-          });
-        };
-
-        const cloudNotes = Array.isArray(data?.notes) ? data.notes : Array.isArray(data) ? data : [];
-
-        if (isPro) {
-          const filteredCloud = cloudNotes.filter((note: any) => !deletedIds.has(String(note.id)));
-          const withImages = await attachImages(filteredCloud);
-          const ordered = applyOrder(withImages);
-          applySafeNotes(ordered);
-
-          if (local.length) {
-            await syncLocalNotesToCloud(cloudNotes, session.access_token);
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify([]));
-              saveLocalOrder([], { custom: false });
-            }
-          }
-        } else {
-          const merged = mergeLocalAndCloud(local, cloudNotes).filter(
-            (note: any) => !deletedIds.has(String(note.id))
-          );
-          const hydrated = await attachImages(merged);
-          const ordered = applyOrder(hydrated);
-          applySafeNotes(ordered);
-        }
-
-        const metaRows = data?.meta || [];
-        if (Array.isArray(metaRows)) {
-          const map: Record<string, NoteMeta> = {};
-          for (const row of metaRows) {
-            map[String(row.note_id)] = {
-              noteId: row.note_id,
-              pinned: !!row.pinned,
-              tags: row.tags || [],
-              versions: row.versions || [],
-            };
-          }
-          setMetadata(map);
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(map));
-          }
-        }
-      } finally {
-        notesFetchInFlightRef.current = false;
-        setNotesLoading(false);
+      const next = prev.filter((note) => note.id !== id);
+      if (typeof window !== "undefined") {
+        persistLocalNotes(next);
+        saveLocalOrder(next.map((n) => n.id), { custom: hasCustomOrderRef.current });
       }
-    },
-    [applyOrder, attachImages, dedupeByContent, deletedIds, getLocalNotes, isPro, user]
-  );
-
-  useEffect(() => {
-    if (Array.isArray(notes) && notes.length) {
-      lastStableNotesRef.current = notes;
-    } else if (!notesLoading && Array.isArray(notes)) {
-      // if fully loaded and empty, clear cache
-      lastStableNotesRef.current = notes;
-    }
-  }, [notes, notesLoading]);
-
-  const notesForDisplay = useMemo(() => {
-    const base = notesLoading && lastStableNotesRef.current.length ? lastStableNotesRef.current : notes;
-    return Array.isArray(base) ? base : [];
-  }, [notes, notesLoading]);
-
-
-  const fetchMetadata = async () => {
-    /* metadata now bundled in fetchNotes */
-  };
-
-  const deleteNote = async (id: string | number) => {
-    if (!user || !isPro) {
-      setNotes((prev: any[]) => {
-        const target = prev.find((n) => String(n.id) === String(id));
-        if (target?.plaintext) {
-          removeImageForContent(target.plaintext);
-          void deleteImagesForKey(contentKey(target.plaintext)).catch(() => {});
-        }
-        const next = prev.filter((note) => note.id !== id);
-        if (typeof window !== "undefined") {
-          persistLocalNotes(next);
-          saveLocalOrder(next.map((n) => n.id), { custom: hasCustomOrderRef.current });
-        }
-        return next;
-      });
-      // clean metadata
-      setMetadata((prev) => {
+      return next;
+    });
+    setMetadata((prev: any) => {
       const next = { ...prev };
       delete next[String(id)];
       if (typeof window !== "undefined") {
@@ -517,55 +271,8 @@ export default function MainPage() {
       }
       return next;
     });
-      return;
-    }
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const res = await fetch("/api/deleteNote", {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ id }),
-    });
-
-    if (res.ok) {
-      setDeletedIds((prev) => {
-        const next = new Set(prev);
-        next.add(String(id));
-        return next;
-      });
-      setNotes((prev: any) => {
-        const base = Array.isArray(prev) ? prev : [];
-        const target = base.find((n: any) => String(n.id) === String(id));
-        if (target?.plaintext) {
-          removeImageForContent(target.plaintext);
-          void deleteImagesForKey(contentKey(target.plaintext)).catch(() => {});
-        }
-        const next = base.filter((note: any) => note && note.id !== undefined && String(note.id) !== String(id));
-        // also clear from local cache so mergeLocalAndCloud doesn't resurrect it
-        if (typeof window !== "undefined") {
-          persistLocalNotes(next);
-          saveLocalOrder(next.map((n: any) => n.id), { custom: hasCustomOrderRef.current });
-        }
-        return next;
-      });
-      setMetadata((prev) => {
-        const next = { ...prev };
-        delete next[String(id)];
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(next));
-        }
-        return next;
-      });
-      setDeleteMessage("Note deleted");
-      setTimeout(() => setDeleteMessage(null), 2500);
-      void fetchNotes();
-    } else {
-      console.error("Failed to delete note");
-    }
+    setDeleteMessage("Note deleted");
+    setTimeout(() => setDeleteMessage(null), 2500);
   };
 
   const updateNoteImageAlt = (noteId: string | number, index: number, alt: string) => {
@@ -584,14 +291,12 @@ export default function MainPage() {
         void saveImagesForKey(key, imgs as any).catch(() => {});
         return { ...n, images: imgs, imageData: (imgs as any)[0]?.data || n.imageData || null };
       });
-      if (typeof window !== "undefined") {
-        persistLocalNotes(updated);
-      }
+      if (typeof window !== "undefined") persistLocalNotes(updated);
       return updated;
     });
   };
 
-  const updateNoteContent = async (id: string | number, newText: string) => {
+  const updateNoteContent = (id: string | number, newText: string) => {
     const safe = newText.trim();
     if (!safe) {
       setEditMessage("Note cannot be empty");
@@ -604,62 +309,16 @@ export default function MainPage() {
       return;
     }
     const existing = notes.find((n) => String(n.id) === String(id));
-
-    // Local-only flow
-    if (!user || !isPro) {
-      setNotes((prev: any[]) => {
-        const next = prev.map((n) =>
-          String(n.id) === String(id) ? { ...n, plaintext: safe } : n
-        );
-        if (typeof window !== "undefined") {
-          persistLocalNotes(next);
-        }
-        return next;
-      });
-      if (existing?.plaintext) {
-        migrateImageForEdit(existing.plaintext, safe);
-      }
-      setEditMessage("Note updated locally");
-      setTimeout(() => setEditMessage(null), 2500);
-      return;
-    }
-
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      setEditMessage("Not logged in");
-      setTimeout(() => setEditMessage(null), 2500);
-      return;
-    }
-
-    const res = await fetch("/api/updateNote", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ id, content: safe }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setEditMessage(body?.error || "Failed to update note");
-      setTimeout(() => setEditMessage(null), 3000);
-      return;
-    }
-
-    // Optimistically update local state so image stays visible until refetch.
-    setNotes((prev: any[]) =>
-      prev.map((n: any) =>
+    setNotes((prev: any[]) => {
+      const next = prev.map((n) =>
         String(n.id) === String(id) ? { ...n, plaintext: safe } : n
-      )
-    );
-    if (existing?.plaintext) {
-      migrateImageForEdit(existing.plaintext, safe);
-    }
-
-    // Refresh from server to avoid any local/cloud merge duplications
-    await fetchNotes();
+      );
+      if (typeof window !== "undefined") persistLocalNotes(next);
+      return next;
+    });
+    if (existing?.plaintext) migrateImageForEdit(existing.plaintext, safe);
     setEditMessage("Note updated");
-    setTimeout(() => setEditMessage(null), 2000);
+    setTimeout(() => setEditMessage(null), 2500);
   };
 
   const reorderNotes = (fromId: string | number, toId: string | number) => {
@@ -671,9 +330,7 @@ export default function MainPage() {
       const next = [...view];
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
-      if ((!user || !isPro) && typeof window !== "undefined") {
-        persistLocalNotes(next);
-      }
+      if (typeof window !== "undefined") persistLocalNotes(next);
       hasCustomOrderRef.current = true;
       saveLocalOrder(next.map((n) => n.id), { custom: true });
       return next;
@@ -690,9 +347,7 @@ export default function MainPage() {
       const next = [...view];
       const [moved] = next.splice(idx, 1);
       next.splice(targetIdx, 0, moved);
-      if ((!user || !isPro) && typeof window !== "undefined") {
-        persistLocalNotes(next);
-      }
+      if (typeof window !== "undefined") persistLocalNotes(next);
       hasCustomOrderRef.current = true;
       saveLocalOrder(next.map((n) => n.id), { custom: true });
       return next;
@@ -718,24 +373,21 @@ export default function MainPage() {
 
   const deleteSelectedThreadNotes = async () => {
     if (!threadSelection.size) return;
-    const ids = Array.from(threadSelection);
-    for (const id of ids) {
-      await deleteNote(id);
+    for (const id of Array.from(threadSelection)) {
+      deleteNote(id);
     }
     setThreadSelection(new Set());
   };
 
   const togglePin = (id: string | number) => {
-    if (!user || !isPro) return;
-    setMetadata((prev) => {
+    setMetadata((prev: any) => {
       const current = prev[String(id)] || { noteId: id, pinned: false, tags: [], versions: [] };
       const updated = { ...current, pinned: !current.pinned };
       const next = { ...prev, [String(id)]: updated };
       if (typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(next));
       }
-      // Reorder notes with updated pin state so drag/drop uses the same view as render.
-      setNotes((prevNotes) => {
+      setNotes((prevNotes: any[]) => {
         const sorted = sortWithPins(prevNotes, next);
         saveLocalOrder(sorted.map((n) => n.id), { custom: hasCustomOrderRef.current });
         return sorted;
@@ -743,19 +395,12 @@ export default function MainPage() {
       setPinInfo(updated.pinned ? "Pinned note stays at the top. Unpin to reorder it." : null);
       return next;
     });
-    void persistMetadata(id, {
-      noteId: id,
-      pinned: !(metadata[String(id)]?.pinned ?? false),
-      tags: metadata[String(id)]?.tags || [],
-      versions: metadata[String(id)]?.versions || [],
-    });
   };
 
   const addTag = (id: string | number, tag: string) => {
-    if (!user || !isPro) return;
     const trimmed = tag.trim();
     if (!trimmed) return;
-    setMetadata((prev) => {
+    setMetadata((prev: any) => {
       const current = prev[String(id)] || { noteId: id, pinned: false, tags: [], versions: [] };
       if (current.tags.includes(trimmed)) return prev;
       const updated = { ...current, tags: [...current.tags, trimmed] };
@@ -765,97 +410,26 @@ export default function MainPage() {
       }
       return next;
     });
-    const current = metadata[String(id)] || { noteId: id, pinned: false, tags: [], versions: [] };
-    const updated = { ...current, tags: current.tags.includes(trimmed) ? current.tags : [...current.tags, trimmed] };
-    void persistMetadata(id, updated);
   };
 
   const removeTag = (id: string | number, tag: string) => {
-    if (!user || !isPro) return;
-    setMetadata((prev) => {
+    setMetadata((prev: any) => {
       const current = prev[String(id)];
       if (!current) return prev;
-      const updated = { ...current, tags: current.tags.filter((t) => t !== tag) };
+      const updated = { ...current, tags: current.tags.filter((t: string) => t !== tag) };
       const next = { ...prev, [String(id)]: updated };
       if (typeof window !== "undefined") {
         window.localStorage.setItem(LOCAL_NOTE_META_KEY, JSON.stringify(next));
       }
       return next;
     });
-    const current = metadata[String(id)];
-    if (current) {
-      const updated = { ...current, tags: current.tags.filter((t) => t !== tag) };
-      void persistMetadata(id, updated);
-    }
   };
 
-  const persistMetadata = async (id: string | number, metaOverride?: NoteMeta) => {
-    if (!user || !isPro) return;
-    const meta = metaOverride ?? metadata[String(id)];
-    if (!meta) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-    void fetch("/api/metadata", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        noteId: id,
-        pinned: meta.pinned,
-        tags: meta.tags,
-        versions: meta.versions || [],
-      }),
-    }).catch(() => {});
-  };
-
-  const syncLocalNotesToCloud = async (cloudNotes: any[], token: string) => {
-    const localNotes = getLocalNotes();
-    if (!localNotes.length) return;
-    const cloudHashes = new Set(
-      cloudNotes.map((n) => contentKey(n.plaintext))
-    );
-    let pushedCount = 0;
-    for (const note of localNotes) {
-      const key = contentKey(note.plaintext);
-      if (!cloudHashes.has(key)) {
-        await fetch("/api/saveNote", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ content: note.plaintext }),
-        }).catch(() => {});
-        pushedCount += 1;
-      }
-    }
-    const refetch = await fetch("/api/getNotes", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (refetch.ok) {
-      const data = await refetch.json();
-      // After push, rely on cloud as the source of truth, but reattach local-only images.
-      const filtered = (data || []).filter((n: any) => !deletedIds.has(String(n.id)));
-      const withImages = await attachImages(filtered);
-      const ordered = applyOrder(withImages);
-      const deduped = dedupeByContent(Array.isArray(ordered) ? ordered : []);
-      setNotes(deduped);
-      if (pushedCount > 0) {
-        setSyncMessage(`Synced ${pushedCount} local note(s) to cloud`);
-        setTimeout(() => setSyncMessage(null), 4000);
-      }
-    }
-  };
-
-  // Preserve manual order; only lift pinned items to the top while keeping relative order
   const sortedNotes = useMemo(() => {
-    const sorted = sortWithPins(notesForDisplay, metadata);
-    // keep order persisted for consistency across refreshes
+    const sorted = sortWithPins(notes, metadata);
     saveLocalOrder(sorted.map((n) => n.id), { custom: hasCustomOrderRef.current });
     return sorted;
-  }, [notesForDisplay, metadata]);
+  }, [notes, metadata]);
 
   const pinnedCount = useMemo(
     () => sortedNotes.filter((n) => metadata[String(n.id)]?.pinned).length,
@@ -926,10 +500,7 @@ export default function MainPage() {
               : n.imageData
                 ? [{ data: n.imageData, alt: n.imageAlt || "" }]
                 : [];
-            return {
-              text: n.plaintext || "",
-              images: imgs,
-            };
+            return { text: n.plaintext || "", images: imgs };
           }),
           replyControl,
           replyListUri,
@@ -948,27 +519,14 @@ export default function MainPage() {
     }
   };
 
-  const exportCloudNotes = async (format: "json" | "md") => {
-    if (!canExportNotes(user, isPro, exporting)) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+  const exportNotes = (format: "json" | "md") => {
+    if (exporting) return;
     setExporting(true);
     try {
-      const res = await fetch("/api/getNotes", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch notes");
-      const data = await res.json();
-      if (!Array.isArray(data)) throw new Error("Unexpected notes payload");
-
       if (format === "json") {
-        const enriched = data.map((note: any) => {
+        const enriched = notes.map((note: any) => {
           const meta = metadata[String(note.id)] || {};
-          return {
-            ...note,
-            tags: meta.tags || [],
-            imageData: note.imageData || null,
-          };
+          return { ...note, tags: (meta as any).tags || [], imageData: note.imageData || null };
         });
         const blob = new Blob([JSON.stringify(enriched, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
@@ -977,9 +535,9 @@ export default function MainPage() {
         link.download = "bluesky-composer-notes.json";
         link.click();
         URL.revokeObjectURL(url);
-        setExportMessage("Exported your cloud notes to JSON");
+        setExportMessage("Exported notes to JSON");
       } else {
-        const md = formatNotesToMarkdown(data, metadata);
+        const md = formatNotesToMarkdown(notes, metadata);
         const blob = new Blob([md], { type: "text/markdown" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -987,7 +545,7 @@ export default function MainPage() {
         link.download = "bluesky-composer-notes.md";
         link.click();
         URL.revokeObjectURL(url);
-        setExportMessage("Exported your cloud notes to Markdown");
+        setExportMessage("Exported notes to Markdown");
       }
       setTimeout(() => setExportMessage(null), 4000);
     } catch (err: any) {
@@ -998,66 +556,31 @@ export default function MainPage() {
     }
   };
 
-  // Live updates: subscribe to Supabase changes for this user; no polling fallback.
-  useEffect(() => {
-    if (!user || !isPro) return;
-    const channel = supabase
-      .channel(`notes-rt-${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notes",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          void fetchNotes();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      void channel.unsubscribe();
-    };
-  }, [fetchNotes, isPro, user]);
-
   return !isClient ? (
     <div className="min-h-screen bg-gray-100 text-slate-900 flex items-center justify-center px-4">
       <div className="text-sm text-slate-700">Loading…</div>
     </div>
   ) : (
     <>
-      <div className="min-h-screen bg-gray-100 text-slate-900 py-6">
-        <div className="max-w-[1400px] mx-auto px-3 sm:px-6 space-y-8">
-          <div className="flex flex-wrap items-center gap-3 justify-end">
-            <button
-              onClick={() => {
-                void fetchNotes({ force: true });
-              }}
-              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
-            >
-              Sync notes now
-            </button>
-          </div>
-
-          <div className="w-full max-w-5xl mx-auto rounded-3xl border border-slate-200 bg-white/90 shadow-lg p-6 sm:p-10 flex flex-col md:flex-row gap-6 md:gap-10 items-center">
-            <div className="flex-1 space-y-3">
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">Drafts for BlueSky, finally here.</h1>
-              <p className="text-sm sm:text-base text-slate-700 leading-relaxed">
-                Capture long posts, split them into clean threads, and never lose a draft again.
+      <div className="min-h-screen bg-gray-100 text-slate-900">
+        <div className="w-full bg-white border-b border-slate-200 shadow-sm">
+          <div className="max-w-[1400px] mx-auto px-6 sm:px-10 py-5 flex flex-col sm:flex-row items-center gap-6 sm:gap-10">
+            <div className="flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm">
+              <img
+                src="/assets/quote.jpg"
+                alt="Bluesky user asking for a notes app that respects the character limit"
+                className="h-28 w-auto object-cover"
+              />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight leading-tight">The Bluesky composer your threads deserve.</h1>
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+                Write with Bluesky&apos;s 300-character limit in mind, split long posts into clean threads, and never again have a lone word hanging off the bottom.
               </p>
             </div>
-            <div className="flex-1 w-full">
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
-                <img
-                  src="/assets/quote.jpg"
-                  alt="BlueSky user upset about dangling words"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
           </div>
+        </div>
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-6 py-6 space-y-8">
 
           {(threadMessage || exportMessage || deleteMessage || editMessage || storageMessage) && (
             <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
@@ -1083,24 +606,11 @@ export default function MainPage() {
                 })}
             </div>
           )}
-          {upgradeMessage && (
-            <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm">
-              {upgradeMessage}
-            </div>
-          )}
-          {syncMessage && (
-            <div className="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 shadow-sm">
-              {syncMessage}
-            </div>
-          )}
 
           <div className="flex flex-col items-center gap-8">
             <div className="w-full max-w-4xl">
               <Composer
-                onNoteSaved={fetchNotes}
                 onLocalSave={addLocalNote}
-                user={user}
-                isPro={plan === "pro"}
                 replyTarget={null}
                 flat={false}
               />
@@ -1188,19 +698,19 @@ export default function MainPage() {
                   </div>
                   <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                     <button
-                      onClick={() => exportCloudNotes("json")}
-                      disabled={exporting || !user}
+                      onClick={() => exportNotes("json")}
+                      disabled={exporting}
                       className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                        exporting || !user ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
+                        exporting ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
                       }`}
                     >
                       {exporting ? "Exporting..." : "Export notes (JSON)"}
                     </button>
                     <button
-                      onClick={() => exportCloudNotes("md")}
-                      disabled={exporting || !user}
+                      onClick={() => exportNotes("md")}
+                      disabled={exporting}
                       className={`px-4 py-2 text-sm font-semibold rounded text-white shadow-sm w-full sm:w-auto ${
-                        exporting || !user ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
+                        exporting ? "bg-purple-300 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-700"
                       }`}
                     >
                       {exporting ? "Exporting..." : "Export notes (Markdown)"}
