@@ -73,14 +73,11 @@ export function FloatingProfile() {
             onMouseEnter={() => setShowTip(true)}
             onMouseLeave={() => setShowTip(false)}
           >
-            <picture>
-              <source srcSet="https://robhutters.com/assets/images/headshot/bluesky_profile.png" />
-              <img
-                src="https://robhutters.com/assets/images/headshot/rob_profile_picture_headshot_small_low_kb.jpeg"
-                alt="Rob Hutters headshot"
-                className="h-full w-full object-cover"
-              />
-            </picture>
+            <img
+              src="https://robhutters.com/assets/images/headshot/bluesky_profile.png"
+              alt="Rob Hutters headshot"
+              className="h-full w-full object-cover"
+            />
           </button>
           {showTip && (
             <div className="absolute -left-48 bottom-full mb-2 w-48 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-zinc-800 shadow-lg border border-zinc-200">
